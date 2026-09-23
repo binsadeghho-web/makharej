@@ -24,7 +24,6 @@ import { ExpensesSection } from './components/ExpensesSection';
 import { ArchiveSection } from './components/ArchiveSection';
 import { AddExpenseModal } from './components/AddExpenseModal';
 import { CloseMonthModal } from './components/CloseMonthModal';
-import { SupabaseSettingsModal } from './components/SupabaseSettingsModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { getCurrentShamsiDate } from './utils/shamsi';
 import { Check, CheckCircle } from 'lucide-react';
@@ -33,8 +32,8 @@ export default function App() {
   const [state, setState] = useState<AppState>(() => loadAppState());
   const [activeTab, setActiveTab] = useState<TabType>('deposits');
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isCloseMonthOpen, setIsCloseMonthOpen] = useState(false);
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [targetBudgetIdForExpense, setTargetBudgetIdForExpense] = useState<string | undefined>(
     undefined
   );
@@ -87,31 +86,6 @@ export default function App() {
       });
     }
   }, [state]);
-
-  const handleManualSync = async () => {
-    const config = getStoredSupabaseConfig();
-    if (!config.isConfigured) {
-      setIsSupabaseModalOpen(true);
-      return;
-    }
-    setSyncStatus('syncing');
-    const ok = await pushStateToSupabase(state);
-    setSyncStatus(ok ? 'synced' : 'error');
-    if (ok) {
-      showToast('اطلاعات با موفقیت در Supabase ذخیره شد');
-    } else {
-      showToast('خطا در ذخیره‌سازی در دیتابیس');
-    }
-  };
-
-  const handleConfigSaved = () => {
-    const config = getStoredSupabaseConfig();
-    if (config.isConfigured) {
-      handleManualSync();
-    } else {
-      setSyncStatus('not_configured');
-    }
-  };
 
   const currentFile = state.currentFile;
   const summary = calculateMonthSummary(currentFile);
@@ -233,6 +207,19 @@ export default function App() {
     showToast(`خرج «${expenseData.title}» ثبت و از سرفصل کسر گردید`);
   };
 
+  const handleUpdateExpense = (updatedExpense: Expense) => {
+    setState((prev) => ({
+      ...prev,
+      currentFile: {
+        ...prev.currentFile,
+        expenses: prev.currentFile.expenses.map((e) =>
+          e.id === updatedExpense.id ? updatedExpense : e
+        ),
+      },
+    }));
+    showToast(`خرج «${updatedExpense.title}» با موفقیت ویرایش شد`);
+  };
+
   const handleDeleteExpense = (expenseId: string) => {
     setState((prev) => ({
       ...prev,
@@ -298,7 +285,6 @@ export default function App() {
         {/* Top Header */}
         <Header
           currentMonthName={currentFile.monthName}
-          onOpenSupabaseSettings={() => setIsSupabaseModalOpen(true)}
           syncStatus={syncStatus}
         />
 
@@ -326,6 +312,10 @@ export default function App() {
               onUpdateBudget={handleUpdateBudget}
               onDeleteBudget={handleDeleteBudget}
               onQuickAddExpenseForBudget={handleQuickAddExpenseForBudget}
+              onEditExpense={(exp) => {
+                setEditingExpense(exp);
+                setIsAddExpenseOpen(true);
+              }}
               onDeleteExpense={handleDeleteExpense}
               currencyUnit={state.currencyUnit}
             />
@@ -338,7 +328,12 @@ export default function App() {
               monthName={currentFile.monthName}
               totalExpenses={summary.totalExpenses}
               onOpenAddModal={(budgetId) => {
+                setEditingExpense(null);
                 setTargetBudgetIdForExpense(budgetId);
+                setIsAddExpenseOpen(true);
+              }}
+              onEditExpense={(exp) => {
+                setEditingExpense(exp);
                 setIsAddExpenseOpen(true);
               }}
               onDeleteExpense={handleDeleteExpense}
@@ -361,22 +356,26 @@ export default function App() {
           activeTab={activeTab}
           onChangeTab={setActiveTab}
           onOpenQuickAddExpense={() => {
+            setEditingExpense(null);
             setTargetBudgetIdForExpense(undefined);
             setIsAddExpenseOpen(true);
           }}
           expensesCount={currentFile.expenses.length}
         />
 
-        {/* Add Expense Modal */}
+        {/* Add / Edit Expense Modal */}
         <AddExpenseModal
           isOpen={isAddExpenseOpen}
           onClose={() => {
             setIsAddExpenseOpen(false);
+            setEditingExpense(null);
             setTargetBudgetIdForExpense(undefined);
           }}
           budgets={currentFile.budgets}
           allExpenses={currentFile.expenses}
           onAddExpense={handleAddExpense}
+          onUpdateExpense={handleUpdateExpense}
+          editingExpense={editingExpense}
           defaultBudgetId={targetBudgetIdForExpense}
           currencyUnit={state.currencyUnit}
         />
@@ -389,15 +388,6 @@ export default function App() {
           summary={summary}
           onConfirmClose={handleConfirmCloseMonth}
           currencyUnit={state.currencyUnit}
-        />
-
-        {/* Supabase Cloudflare Database Settings Modal */}
-        <SupabaseSettingsModal
-          isOpen={isSupabaseModalOpen}
-          onClose={() => setIsSupabaseModalOpen(false)}
-          onConfigSaved={handleConfigSaved}
-          syncStatus={syncStatus}
-          onManualSync={handleManualSync}
         />
 
         {/* Floating Toast Notification */}

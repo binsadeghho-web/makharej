@@ -11,6 +11,7 @@ import {
   Filter,
   Tag,
   ArrowUpRight,
+  Pencil,
 } from 'lucide-react';
 
 interface ExpensesSectionProps {
@@ -19,6 +20,7 @@ interface ExpensesSectionProps {
   monthName: string;
   totalExpenses: number;
   onOpenAddModal: (defaultBudgetId?: string) => void;
+  onEditExpense: (expense: Expense) => void;
   onDeleteExpense: (expenseId: string) => void;
   currencyUnit?: string;
 }
@@ -29,6 +31,7 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
   monthName,
   totalExpenses,
   onOpenAddModal,
+  onEditExpense,
   onDeleteExpense,
   currencyUnit = 'تومان',
 }) => {
@@ -195,9 +198,9 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
                   )}
                 </div>
 
-                {/* Left: Amount & Delete */}
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <div className="text-left">
+                {/* Left: Amount & Edit & Delete */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-left ml-1">
                     <span className="text-xs font-black text-rose-400 block leading-tight">
                       -{formatMoney(expense.amount, '')}
                     </span>
@@ -205,9 +208,17 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({
                   </div>
 
                   <button
+                    onClick={() => onEditExpense(expense)}
+                    title="ویرایش مشخصات یا مبلغ این خرج"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
                     onClick={() => onDeleteExpense(expense.id)}
                     title="حذف این خرج و بازگشت مبلغ به بودجه"
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

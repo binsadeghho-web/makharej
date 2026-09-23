@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Budget, Expense } from '../types/finance';
 import { getCurrentShamsiDate, formatMoney, toPersianDigits, toEnglishDigits } from '../utils/shamsi';
-import { X, Calendar, Clock, DollarSign, Tag, Check, AlertCircle, Plus } from 'lucide-react';
+import { X, Calendar, Clock, Check, AlertCircle, Plus, Edit3 } from 'lucide-react';
 
 interface AddExpenseModalProps {
   isOpen: boolean;
@@ -9,6 +9,8 @@ interface AddExpenseModalProps {
   budgets: Budget[];
   allExpenses: Expense[];
   onAddExpense: (expense: Omit<Expense, 'id' | 'timestamp'>) => void;
+  onUpdateExpense?: (expense: Expense) => void;
+  editingExpense?: Expense | null;
   defaultBudgetId?: string;
   currencyUnit?: string;
 }
@@ -31,46 +33,72 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   budgets,
   allExpenses,
   onAddExpense,
+  onUpdateExpense,
+  editingExpense,
   defaultBudgetId,
   currencyUnit = 'تومان',
 }) => {
   const [title, setTitle] = useState('');
   const [amountStr, setAmountStr] = useState('');
-  const [selectedBudgetId, setSelectedBudgetId] = useState(defaultBudgetId || (budgets[0]?.id || ''));
+  const [selectedBudgetId, setSelectedBudgetId] = useState('');
   const [dateStr, setDateStr] = useState('');
   const [timeStr, setTimeStr] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize automatic current Shamsi date and time on modal open
+  const isEditing = Boolean(editingExpense);
+
+  // Initialize form based on whether we are editing or creating a new expense
   useEffect(() => {
     if (isOpen) {
-      const now = getCurrentShamsiDate();
-      setDateStr(now.formatted);
-      setTimeStr(now.timeFormatted);
-      setTitle('');
-      setAmountStr('');
-      setNote('');
       setError(null);
-      if (defaultBudgetId) {
-        setSelectedBudgetId(defaultBudgetId);
-      } else if (budgets.length > 0 && !selectedBudgetId) {
-        setSelectedBudgetId(budgets[0].id);
+      if (editingExpense) {
+        // Editing existing expense
+        setTitle(editingExpense.title || '');
+        setAmountStr(String(editingExpense.amount || ''));
+        setSelectedBudgetId(editingExpense.budgetId || budgets[0]?.id || '');
+        setDateStr(editingExpense.date || '');
+        setTimeStr(editingExpense.time || '');
+        setNote(editingExpense.note || '');
+      } else {
+        // Creating new expense
+        const now = getCurrentShamsiDate();
+        setDateStr(now.formatted);
+        setTimeStr(now.timeFormatted);
+        setTitle('');
+        setAmountStr('');
+        setNote('');
+        if (defaultBudgetId) {
+          setSelectedBudgetId(defaultBudgetId);
+        } else if (budgets.length > 0) {
+          setSelectedBudgetId(budgets[0].id);
+        }
       }
     }
-  }, [isOpen, defaultBudgetId, budgets]);
+  }, [isOpen, editingExpense, defaultBudgetId, budgets]);
 
   if (!isOpen) return null;
 
   const rawAmount = parseFloat(toEnglishDigits(amountStr).replace(/,/g, '')) || 0;
 
   // Find remaining balance of chosen budget
+  // Note: If editing, deduct the previous expense amount from current spent calculation
   const selectedBudget = budgets.find((b) => b.id === selectedBudgetId);
-  const spentOnSelected = selectedBudget
+  const previousExpenseAmountInThisBudget =
+    isEditing && editingExpense && editingExpense.budgetId === selectedBudgetId
+      ? editingExpense.amount
+      : 0;
+
+  const totalSpentInSelected = selectedBudget
     ? allExpenses.filter((e) => e.budgetId === selectedBudget.id).reduce((sum, e) => sum + e.amount, 0)
     : 0;
-  const remainingInSelected = selectedBudget ? selectedBudget.allocatedAmount - spentOnSelected : 0;
-  const newRemainingAfterExpense = remainingInSelected - rawAmount;
+
+  // Available balance before this new / edited amount is applied
+  const availableBefore = selectedBudget
+    ? selectedBudget.allocatedAmount - (totalSpentInSelected - previousExpenseAmountInThisBudget)
+    : 0;
+
+  const newRemainingAfterExpense = availableBefore - rawAmount;
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = toEnglishDigits(e.target.value).replace(/[^0-9]/g, '');
@@ -98,16 +126,30 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
     }
 
     const budget = budgets.find((b) => b.id === selectedBudgetId);
+    const budgetName = budget ? budget.title : 'سایر';
 
-    onAddExpense({
-      title: title.trim(),
-      amount: rawAmount,
-      budgetId: selectedBudgetId,
-      budgetName: budget ? budget.title : 'سایر',
-      date: dateStr || getCurrentShamsiDate().formatted,
-      time: timeStr || getCurrentShamsiDate().timeFormatted,
-      note: note.trim() ? note.trim() : undefined,
-    });
+    if (isEditing && editingExpense && onUpdateExpense) {
+      onUpdateExpense({
+        ...editingExpense,
+        title: title.trim(),
+        amount: rawAmount,
+        budgetId: selectedBudgetId,
+        budgetName,
+        date: dateStr.trim() || editingExpense.date,
+        time: timeStr.trim() || editingExpense.time,
+        note: note.trim() ? note.trim() : undefined,
+      });
+    } else {
+      onAddExpense({
+        title: title.trim(),
+        amount: rawAmount,
+        budgetId: selectedBudgetId,
+        budgetName,
+        date: dateStr.trim() || getCurrentShamsiDate().formatted,
+        time: timeStr.trim() || getCurrentShamsiDate().timeFormatted,
+        note: note.trim() ? note.trim() : undefined,
+      });
+    }
 
     onClose();
   };
@@ -124,8 +166,19 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             <X className="w-5 h-5" />
           </button>
           <div className="text-center">
-            <h3 className="text-lg font-bold text-white">ثبت مخارج جدید</h3>
-            <p className="text-xs text-slate-400">کسر مستقیم و آنی از بودجه انتخاب شده</p>
+            <h3 className="text-lg font-bold text-white flex items-center justify-center gap-1.5">
+              {isEditing ? (
+                <>
+                  <Edit3 className="w-4 h-4 text-emerald-400" />
+                  <span>ویرایش خرج ثبت‌شده</span>
+                </>
+              ) : (
+                <span>ثبت مخارج جدید</span>
+              )}
+            </h3>
+            <p className="text-xs text-slate-400">
+              {isEditing ? 'تغییر مبلغ، سرفصل بودجه یا مشخصات خرج' : 'کسر مستقیم و آنی از بودجه انتخاب شده'}
+            </p>
           </div>
           <div className="w-9" />
         </div>
@@ -152,7 +205,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 onChange={handleAmountChange}
                 placeholder="مثال: ۲۵۰,۰۰۰"
                 className="w-full text-2xl font-bold bg-slate-950 border border-slate-700/80 rounded-2xl px-4 py-3.5 text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 transition text-left dir-ltr"
-                autoFocus
+                autoFocus={!isEditing}
               />
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500">
                 {currencyUnit}
@@ -211,10 +264,14 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
               <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1">
                 {budgets.map((b) => {
                   const isSelected = selectedBudgetId === b.id;
+                  const bPrevAmount =
+                    isEditing && editingExpense && editingExpense.budgetId === b.id
+                      ? editingExpense.amount
+                      : 0;
                   const bSpent = allExpenses
                     .filter((e) => e.budgetId === b.id)
                     .reduce((sum, e) => sum + e.amount, 0);
-                  const bRemaining = b.allocatedAmount - bSpent;
+                  const bAvailable = b.allocatedAmount - (bSpent - bPrevAmount);
 
                   return (
                     <button
@@ -235,11 +292,11 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                         <div>
                           <p className="text-xs font-bold text-white">{b.title}</p>
                           <p className="text-[10px] text-slate-400">
-                            مانده فعلی:{' '}
+                            مانده قبل از این خرج:{' '}
                             <span
-                              className={bRemaining < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}
+                              className={bAvailable < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}
                             >
-                              {formatMoney(bRemaining, currencyUnit)}
+                              {formatMoney(bAvailable, currencyUnit)}
                             </span>
                           </p>
                         </div>
@@ -258,22 +315,22 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                       : 'bg-slate-800/60 border-slate-700/60 text-slate-300'
                   }`}
                 >
-                  <span>مانده بودجه پس از ثبت این خرج:</span>
+                  <span>مانده بودجه پس از این خرج:</span>
                   <span className="font-bold">
                     {formatMoney(newRemainingAfterExpense, currencyUnit)}
-                    {newRemainingAfterExpense < 0 && ' (تجاوز از سقف!)'}
+                    {newRemainingAfterExpense < 0 && ' (کسری سقف!)'}
                   </span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Date and Time (Automatic) */}
+          {/* Date and Time */}
           <div className="grid grid-cols-2 gap-3 pt-1">
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                <span>تاریخ شمسی (اتومات)</span>
+                <span>تاریخ شمسی</span>
               </label>
               <input
                 type="text"
@@ -285,7 +342,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-1 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-teal-400" />
-                <span>ساعت ثبت (اتومات)</span>
+                <span>ساعت ثبت</span>
               </label>
               <input
                 type="text"
@@ -312,10 +369,19 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>ثبت خرج و کسر از بودجه</span>
+              {isEditing ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>ذخیره تغییرات خرج</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  <span>ثبت خرج و کسر از بودجه</span>
+                </>
+              )}
             </button>
           </div>
         </form>

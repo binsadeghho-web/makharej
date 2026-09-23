@@ -29,6 +29,7 @@ interface BudgetsSectionProps {
   onUpdateBudget: (budget: Budget) => void;
   onDeleteBudget: (budgetId: string) => void;
   onQuickAddExpenseForBudget: (budgetId: string) => void;
+  onEditExpense?: (expense: Expense) => void;
   onDeleteExpense?: (expenseId: string) => void;
   currencyUnit?: string;
 }
@@ -54,6 +55,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
   onUpdateBudget,
   onDeleteBudget,
   onQuickAddExpenseForBudget,
+  onEditExpense,
   onDeleteExpense,
   currencyUnit = 'تومان',
 }) => {
@@ -415,15 +417,24 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-rose-400 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-rose-400 text-xs ml-1">
                               -{formatMoney(exp.amount, currencyUnit)}
                             </span>
+                            {onEditExpense && (
+                              <button
+                                onClick={() => onEditExpense(exp)}
+                                title="ویرایش این خرج"
+                                className="p-1 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition cursor-pointer"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                            )}
                             {onDeleteExpense && (
                               <button
                                 onClick={() => onDeleteExpense(exp.id)}
                                 title="حذف این خرج و بازگشت وجه به بودجه"
-                                className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                                className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>
