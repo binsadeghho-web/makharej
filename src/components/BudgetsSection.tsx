@@ -3,8 +3,10 @@ import { Budget, Expense, MonthSummary } from '../types/finance';
 import { getBudgetCalculations } from '../services/storage';
 import { formatMoney, toPersianDigits } from '../utils/shamsi';
 import { BudgetDonutChart } from './BudgetDonutChart';
+import { BudgetSummaryChart } from './BudgetSummaryChart';
 import {
   PieChart,
+  BarChart3,
   Plus,
   Edit3,
   Trash2,
@@ -59,6 +61,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
   onDeleteExpense,
   currencyUnit = 'تومان',
 }) => {
+  const [chartView, setChartView] = useState<'comparison' | 'distribution'>('comparison');
   const [chartMode, setChartMode] = useState<'expenses' | 'allocated'>('expenses');
   const [showAddBudgetModal, setShowAddBudgetModal] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
@@ -192,45 +195,86 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
         </div>
       </div>
 
-      {/* Interactive Pie / Donut Chart */}
-      <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-3xl shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <PieChart className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white">نمودار دایره‌ای بودجه و مخارج</h3>
+      {/* Charts Section: Recharts Comparison & Donut Distribution */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <div>
+            <h3 className="text-xs font-bold text-white">تحلیل و گزارش بصری بودجه‌ها</h3>
+            <p className="text-[10px] text-slate-400">مقایسه سقف با مخارج واقعی و سهم درصدی</p>
           </div>
-
-          {/* Chart Toggle */}
-          <div className="flex p-0.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px]">
+          <div className="flex p-0.5 bg-slate-900 rounded-xl border border-slate-800 text-[11px]">
             <button
-              onClick={() => setChartMode('expenses')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                chartMode === 'expenses'
-                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setChartView('comparison')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold transition ${
+                chartView === 'comparison'
+                  ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              خرج‌های واقعی
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>مقایسه سقف و خرج</span>
             </button>
             <button
-              onClick={() => setChartMode('allocated')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                chartMode === 'allocated'
-                  ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setChartView('distribution')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold transition ${
+                chartView === 'distribution'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              سهم سقف بودجه
+              <PieChart className="w-3.5 h-3.5" />
+              <span>سهم درصدی</span>
             </button>
           </div>
         </div>
 
-        <BudgetDonutChart
-          data={donutData}
-          totalAmount={chartTotal}
-          centerSubtitle={chartTitle}
-          unit={currencyUnit}
-        />
+        {chartView === 'comparison' ? (
+          <BudgetSummaryChart
+            budgets={budgets}
+            expenses={expenses}
+            currencyUnit={currencyUnit}
+          />
+        ) : (
+          <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-3xl shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <PieChart className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white">نمودار دایره‌ای سهم بودجه و مخارج</h3>
+              </div>
+
+              {/* Chart Toggle */}
+              <div className="flex p-0.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px]">
+                <button
+                  onClick={() => setChartMode('expenses')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                    chartMode === 'expenses'
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  خرج‌های واقعی
+                </button>
+                <button
+                  onClick={() => setChartMode('allocated')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                    chartMode === 'allocated'
+                      ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  سهم سقف بودجه
+                </button>
+              </div>
+            </div>
+
+            <BudgetDonutChart
+              data={donutData}
+              totalAmount={chartTotal}
+              centerSubtitle={chartTitle}
+              unit={currencyUnit}
+            />
+          </div>
+        )}
       </div>
 
       {/* Detailed Budget Breakdown Section (تفکیک بودجه‌ها: چقدر کسر شده و چقدر مانده) */}
