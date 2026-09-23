@@ -358,6 +358,7 @@ export default function App() {
           {activeTab === 'archive' && (
             <ArchiveSection
               archives={state.archives}
+              currentFile={currentFile}
               onExportBackup={handleExportBackup}
               onImportBackup={handleImportBackup}
               currencyUnit={state.currencyUnit}
