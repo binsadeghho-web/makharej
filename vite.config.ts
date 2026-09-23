@@ -87,7 +87,7 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve('.'),
       },
     },
     envPrefix: ['VITE_', 'SUPABASE_'],
