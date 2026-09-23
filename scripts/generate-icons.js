@@ -1,0 +1,117 @@
+import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
+
+const publicDir = path.resolve(process.cwd(), 'public');
+if (!fs.existsSync(publicDir)) {
+  fs.mkdirSync(publicDir, { recursive: true });
+}
+
+// Persian finance SVG icon with emerald, teal & gold accents, wallet & coin
+const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded rect -->
+  <rect width="512" height="512" rx="120" fill="url(#bgGrad)" />
+
+  <!-- Inner subtle border -->
+  <rect x="16" y="16" width="480" height="480" rx="104" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4" />
+
+  <!-- Wallet card / shape -->
+  <g filter="url(#shadow)">
+    <!-- Main wallet body -->
+    <rect x="96" y="140" width="320" height="232" rx="36" fill="url(#cardGrad)" />
+    
+    <!-- Pattern curve -->
+    <path d="M 96 190 Q 256 160 416 190 L 416 140 Q 256 140 96 140 Z" fill="rgba(255,255,255,0.12)" />
+    
+    <!-- Wallet flap -->
+    <path d="M 280 200 L 416 200 C 427 200 436 209 436 220 L 436 292 C 436 303 427 312 416 312 L 280 312 C 255 312 240 290 240 256 C 240 222 255 200 280 200 Z" fill="#047857" />
+    
+    <!-- Coin fastener on flap -->
+    <circle cx="340" cy="256" r="28" fill="url(#goldGrad)" stroke="#d97706" stroke-width="4" />
+    <circle cx="340" cy="256" r="16" fill="none" stroke="#b45309" stroke-width="2" />
+    <path d="M 334 246 L 346 246 M 340 246 L 340 266 M 334 266 L 346 266" stroke="#78350f" stroke-width="3" stroke-linecap="round" />
+
+    <!-- Credit card peaking out of wallet -->
+    <rect x="136" y="100" width="240" height="120" rx="20" fill="#3b82f6" fill-opacity="0.9" />
+    <rect x="136" y="125" width="240" height="24" fill="#1e3a8a" />
+    <rect x="160" y="165" width="48" height="32" rx="6" fill="#fbbf24" />
+
+    <!-- Up/Down financial trend arrows or chart badge -->
+    <g transform="translate(136, 230)">
+      <circle cx="44" cy="44" r="32" fill="#064e3b" stroke="#34d399" stroke-width="3" />
+      <path d="M 32 50 L 44 38 L 56 50 M 44 38 L 44 56" stroke="#34d399" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </g>
+</svg>`;
+
+// Maskable icon with 15% safe padding
+const svgMaskable = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+    <linearGradient id="cardGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="goldGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <!-- Full bleed background -->
+  <rect width="512" height="512" fill="url(#bgGrad2)" />
+  
+  <!-- Scaled content in safe zone (80% scale centered) -->
+  <g transform="translate(51.2, 51.2) scale(0.8)">
+    <rect x="96" y="140" width="320" height="232" rx="36" fill="url(#cardGrad2)" />
+    <path d="M 96 190 Q 256 160 416 190 L 416 140 Q 256 140 96 140 Z" fill="rgba(255,255,255,0.12)" />
+    <path d="M 280 200 L 416 200 C 427 200 436 209 436 220 L 436 292 C 436 312 416 312 416 312 L 280 312 C 255 312 240 290 240 256 C 240 222 255 200 280 200 Z" fill="#047857" />
+    <circle cx="340" cy="256" r="28" fill="url(#goldGrad2)" stroke="#d97706" stroke-width="4" />
+    <circle cx="340" cy="256" r="16" fill="none" stroke="#b45309" stroke-width="2" />
+    <rect x="136" y="100" width="240" height="120" rx="20" fill="#3b82f6" fill-opacity="0.9" />
+    <rect x="136" y="125" width="240" height="24" fill="#1e3a8a" />
+    <rect x="160" y="165" width="48" height="32" rx="6" fill="#fbbf24" />
+    <circle cx="180" cy="274" r="32" fill="#064e3b" stroke="#34d399" stroke-width="3" />
+    <path d="M 168 280 L 180 268 L 192 280 M 180 268 L 180 286" stroke="#34d399" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>`;
+
+async function run() {
+  fs.writeFileSync(path.join(publicDir, 'icon.svg'), svgIcon);
+  fs.writeFileSync(path.join(publicDir, 'favicon.svg'), svgIcon);
+
+  const svgBuffer = Buffer.from(svgIcon);
+  const maskableBuffer = Buffer.from(svgMaskable);
+
+  await sharp(svgBuffer).resize(192, 192).png().toFile(path.join(publicDir, 'pwa-192x192.png'));
+  await sharp(svgBuffer).resize(512, 512).png().toFile(path.join(publicDir, 'pwa-512x512.png'));
+  await sharp(maskableBuffer).resize(512, 512).png().toFile(path.join(publicDir, 'pwa-maskable-512x512.png'));
+  await sharp(svgBuffer).resize(180, 180).png().toFile(path.join(publicDir, 'apple-touch-icon.png'));
+  await sharp(svgBuffer).resize(64, 64).png().toFile(path.join(publicDir, 'favicon.ico'));
+
+  console.log('Icons generated successfully in public/');
+}
+
+run().catch(console.error);

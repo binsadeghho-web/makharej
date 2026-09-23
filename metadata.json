@@ -1,0 +1,8 @@
+{
+  "name": "مدیر مالی ماهانه | بودجه و مخارج",
+  "description": "سامانه مدیریت بودجه، واریزی‌ها و مخارج ماهانه بر اساس تقویم هجری شمسی با طراحی اختصاصی عمودی موبایل و قابلیت نصب PWA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

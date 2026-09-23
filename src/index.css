@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  html, body {
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+/* Custom scrollbar for mobile clean look */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Safe areas for mobile notches and home indicators */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 1rem);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0.5rem);
+}
