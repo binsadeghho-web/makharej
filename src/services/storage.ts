@@ -9,9 +9,9 @@ export const DEFAULT_BUDGET_TEMPLATES = [
 ];
 
 export const DEFAULT_FIXED_DEPOSITS = [
-  { id: 'fd-salary', title: 'حقوق و دستمزد ماهانه', defaultAmount: 32000000 },
-  { id: 'fd-subsidy', title: 'یارانه و کمک‌هزینه', defaultAmount: 1600000 },
-  { id: 'fd-invest', title: 'سود سپرده / درآمد دوم', defaultAmount: 4000000 },
+  { id: 'fd-invest', title: 'سود سپرده / درآمد دوم', defaultAmount: 4000000, expectedDay: 5, expectedDate: 'روز ۵ ماه' },
+  { id: 'fd-subsidy', title: 'یارانه و کمک‌هزینه', defaultAmount: 1600000, expectedDay: 20, expectedDate: 'روز ۲۰ ماه' },
+  { id: 'fd-salary', title: 'حقوق و دستمزد ماهانه', defaultAmount: 32000000, expectedDay: 28, expectedDate: 'روز ۲۸ ماه' },
 ];
 
 export function createInitialMonthFile(year?: number, month?: number): MonthlyFile {
@@ -36,6 +36,8 @@ export function createInitialMonthFile(year?: number, month?: number): MonthlyFi
     isReceived: index === 0, // Mark first one as already received for realistic feel
     receivedDate: index === 0 ? now.formatted : undefined,
     receivedTime: index === 0 ? now.timeFormatted : undefined,
+    expectedDay: fd.expectedDay,
+    expectedDate: fd.expectedDate,
     createdAt: new Date().toISOString(),
   }));
 
@@ -218,14 +220,26 @@ export function closeAndArchiveCurrentMonth(
       }));
 
   // Setup fixed deposits for new month: carry over fixed deposits with isReceived reset to false
-  const newDeposits: Deposit[] = currentState.fixedDepositTemplates.map((fd) => ({
-    id: `deposit-${fd.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    title: fd.title,
-    amount: fd.defaultAmount,
-    isFixed: true,
-    isReceived: false,
-    createdAt: new Date().toISOString(),
-  }));
+  const activeFixedDeposits = current.deposits.filter((d) => d.isFixed);
+  const newDeposits: Deposit[] = activeFixedDeposits.length > 0
+    ? activeFixedDeposits.map((fd) => ({
+        id: `deposit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: fd.title,
+        amount: fd.amount,
+        isFixed: true,
+        isReceived: false,
+        expectedDay: fd.expectedDay,
+        expectedDate: fd.expectedDate,
+        createdAt: new Date().toISOString(),
+      }))
+    : currentState.fixedDepositTemplates.map((fd) => ({
+        id: `deposit-${fd.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: fd.title,
+        amount: fd.defaultAmount,
+        isFixed: true,
+        isReceived: false,
+        createdAt: new Date().toISOString(),
+      }));
 
   const newMonthFile: MonthlyFile = {
     id: `file-${next.year}-${String(next.month).padStart(2, '0')}`,

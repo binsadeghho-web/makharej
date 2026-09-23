@@ -132,6 +132,19 @@ export default function App() {
     showToast('واریزی با موفقیت به لیست اضافه شد');
   };
 
+  const handleUpdateDeposit = (updatedDeposit: Deposit) => {
+    setState((prev) => ({
+      ...prev,
+      currentFile: {
+        ...prev.currentFile,
+        deposits: prev.currentFile.deposits.map((d) =>
+          d.id === updatedDeposit.id ? updatedDeposit : d
+        ),
+      },
+    }));
+    showToast(`واریزی «${updatedDeposit.title}» با موفقیت ویرایش شد`);
+  };
+
   const handleDeleteDeposit = (depositId: string) => {
     setState((prev) => ({
       ...prev,
@@ -296,6 +309,7 @@ export default function App() {
               summary={summary}
               onToggleDepositReceived={handleToggleDepositReceived}
               onAddDeposit={handleAddDeposit}
+              onUpdateDeposit={handleUpdateDeposit}
               onDeleteDeposit={handleDeleteDeposit}
               onOpenCloseMonthModal={() => setIsCloseMonthOpen(true)}
               currencyUnit={state.currencyUnit}

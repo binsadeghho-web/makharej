@@ -6,6 +6,9 @@ export interface Deposit {
   isReceived: boolean; // تیک خورده / واریز شده
   receivedDate?: string; // تاریخ واریز شمسی
   receivedTime?: string; // زمان واریز
+  expectedDate?: string; // زمان واریزی / تاریخ مورد انتظار واریز (شمسی)
+  expectedDay?: number; // روز مورد انتظار واریز در ماه (۱ تا ۳۱)
+  expectedTime?: string; // ساعت مورد انتظار
   createdAt: string;
 }
 
