@@ -4,13 +4,8 @@ import { getCurrentShamsiDate, getShamsiMonthTitle, getNextShamsiMonth } from '.
 const STORAGE_KEY = 'shamsi_finance_pwa_state_v1';
 
 export const DEFAULT_BUDGET_TEMPLATES = [
-  { id: 'b-food', title: 'خوراک و سوپرمارکت', defaultAmount: 9000000, color: '#10b981', icon: 'Utensils' },
-  { id: 'b-housing', title: 'اجاره و قبوض ساختمان', defaultAmount: 11000000, color: '#3b82f6', icon: 'Home' },
-  { id: 'b-transport', title: 'حمل و نقل و بنزین', defaultAmount: 2500000, color: '#f59e0b', icon: 'Car' },
-  { id: 'b-leisure', title: 'تفریح، کافه و رستوران', defaultAmount: 3000000, color: '#ec4899', icon: 'Smile' },
-  { id: 'b-health', title: 'درمان، دارو و سلامت', defaultAmount: 2000000, color: '#06b6d4', icon: 'HeartPulse' },
-  { id: 'b-shopping', title: 'پوشاک و خرید شخصی', defaultAmount: 3500000, color: '#8b5cf6', icon: 'ShoppingBag' },
-  { id: 'b-savings', title: 'پس‌انداز و سرمایه‌گذاری', defaultAmount: 5000000, color: '#14b8a6', icon: 'PiggyBank' },
+  { id: 'b-daily', title: 'خرج‌های روزمره', defaultAmount: 8000000, color: '#10b981', icon: 'ShoppingBag' },
+  { id: 'b-others', title: 'سایر هزینه‌ها', defaultAmount: 4000000, color: '#3b82f6', icon: 'MoreHorizontal' },
 ];
 
 export const DEFAULT_FIXED_DEPOSITS = [
@@ -26,7 +21,7 @@ export function createInitialMonthFile(year?: number, month?: number): MonthlyFi
   const monthName = getShamsiMonthTitle(y, m);
 
   const initialBudgets: Budget[] = DEFAULT_BUDGET_TEMPLATES.map((t) => ({
-    id: `budget-${t.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `budget-${t.id}`,
     title: t.title,
     allocatedAmount: t.defaultAmount,
     color: t.color,
@@ -44,28 +39,28 @@ export function createInitialMonthFile(year?: number, month?: number): MonthlyFi
     createdAt: new Date().toISOString(),
   }));
 
-  // Initial demo expenses to show the math immediately
-  const foodBudget = initialBudgets.find((b) => b.title.includes('خوراک')) || initialBudgets[0];
-  const transportBudget = initialBudgets.find((b) => b.title.includes('حمل و نقل')) || initialBudgets[1];
+  // Initial demo expenses on the two default budgets
+  const dailyBudget = initialBudgets[0];
+  const othersBudget = initialBudgets[1];
 
   const initialExpenses: Expense[] = [
     {
       id: `exp-1-${Date.now()}`,
-      title: 'خرید هفتگی هایپرمارکت',
-      amount: 1850000,
-      budgetId: foodBudget.id,
-      budgetName: foodBudget.title,
+      title: 'خرید روزمره سوپرمارکت و میوه',
+      amount: 650000,
+      budgetId: dailyBudget.id,
+      budgetName: dailyBudget.title,
       date: now.formatted,
       time: '۱۰:۳۰',
       timestamp: Date.now() - 3600000 * 24,
-      note: 'لبنیات و پروتئین',
+      note: 'خرید مایحتاج روزمره',
     },
     {
       id: `exp-2-${Date.now()}`,
-      title: 'بنزین و کارواش',
-      amount: 250000,
-      budgetId: transportBudget.id,
-      budgetName: transportBudget.title,
+      title: 'شارژ ساختمان و قبوض',
+      amount: 400000,
+      budgetId: othersBudget.id,
+      budgetName: othersBudget.title,
       date: now.formatted,
       time: '۱۶:۴۵',
       timestamp: Date.now() - 3600000 * 5,
@@ -91,6 +86,18 @@ export function loadAppState(): AppState {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.currentFile) {
+        // If state has old initial 7 budgets from previous test, migrate to the 2 requested default budgets
+        const hasOldSeven = parsed.currentFile.budgets?.some((b: Budget) => b.id.includes('b-food') || b.id.includes('b-housing'));
+        if (hasOldSeven && parsed.archives?.length === 0) {
+          const fresh = createInitialMonthFile(parsed.currentFile.year, parsed.currentFile.month);
+          parsed.currentFile.budgets = fresh.budgets;
+          parsed.defaultBudgetTemplates = DEFAULT_BUDGET_TEMPLATES;
+          // remap demo expenses if needed
+          if (parsed.currentFile.expenses?.length > 0) {
+            parsed.currentFile.expenses = fresh.expenses;
+          }
+          saveAppState(parsed);
+        }
         return parsed;
       }
     }

@@ -10,10 +10,14 @@ import {
   Trash2,
   AlertCircle,
   TrendingDown,
-  Sparkles,
-  Layers,
+  ChevronDown,
+  ChevronUp,
+  Receipt,
+  Calendar,
+  Clock,
+  CheckCircle2,
+  ListOrdered,
   X,
-  PlusCircle,
 } from 'lucide-react';
 
 interface BudgetsSectionProps {
@@ -25,6 +29,7 @@ interface BudgetsSectionProps {
   onUpdateBudget: (budget: Budget) => void;
   onDeleteBudget: (budgetId: string) => void;
   onQuickAddExpenseForBudget: (budgetId: string) => void;
+  onDeleteExpense?: (expenseId: string) => void;
   currencyUnit?: string;
 }
 
@@ -49,11 +54,13 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
   onUpdateBudget,
   onDeleteBudget,
   onQuickAddExpenseForBudget,
+  onDeleteExpense,
   currencyUnit = 'تومان',
 }) => {
   const [chartMode, setChartMode] = useState<'expenses' | 'allocated'>('expenses');
   const [showAddBudgetModal, setShowAddBudgetModal] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [expandedBudgetId, setExpandedBudgetId] = useState<string | null>(null);
 
   // Form states for adding/editing
   const [formTitle, setFormTitle] = useState('');
@@ -98,6 +105,10 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
     setShowAddBudgetModal(false);
   };
 
+  const toggleExpand = (budgetId: string) => {
+    setExpandedBudgetId((prev) => (prev === budgetId ? null : budgetId));
+  };
+
   // Prepare Donut Chart Data
   const donutData =
     chartMode === 'expenses'
@@ -130,13 +141,13 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
   const chartTitle = chartMode === 'expenses' ? 'کل مخارج ثبت شده' : 'کل سقف بودجه‌ها';
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-5 pb-8 text-right">
       {/* Top Banner KPI */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/40 p-5 rounded-3xl border border-slate-800 shadow-xl text-right">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/40 p-5 rounded-3xl border border-slate-800 shadow-xl">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <span className="text-[11px] font-medium text-teal-400">بخش دوم: بودجه‌بندی</span>
-            <h2 className="text-xl font-black text-white mt-0.5">وضعیت بودجه‌های {monthName}</h2>
+            <span className="text-[11px] font-medium text-teal-400">بخش دوم: بودجه‌بندی و تفکیک</span>
+            <h2 className="text-xl font-black text-white mt-0.5">وضعیت تفکیکی بودجه‌های {monthName}</h2>
           </div>
           <button
             onClick={openAddModal}
@@ -150,7 +161,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
         {/* 3 Main Numbers */}
         <div className="grid grid-cols-3 gap-2 mt-4">
           <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
-            <span className="text-[10px] text-slate-400 block mb-0.5">بودجه کل تعیین‌شده</span>
+            <span className="text-[10px] text-slate-400 block mb-0.5">بودجه کل مصوب</span>
             <span className="text-xs font-extrabold text-white block">
               {formatMoney(summary.totalBudgetAllocated, '')}
             </span>
@@ -158,7 +169,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
           </div>
 
           <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
-            <span className="text-[10px] text-slate-400 block mb-0.5">کل خرج شده</span>
+            <span className="text-[10px] text-slate-400 block mb-0.5">کل مبلغ کسر شده</span>
             <span className="text-xs font-extrabold text-rose-400 block">
               {formatMoney(summary.totalExpenses, '')}
             </span>
@@ -184,7 +195,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <PieChart className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white">نمودار دایره‌ای وضعیت مالی</h3>
+            <h3 className="text-sm font-bold text-white">نمودار دایره‌ای بودجه و مخارج</h3>
           </div>
 
           {/* Chart Toggle */}
@@ -220,13 +231,16 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
         />
       </div>
 
-      {/* Budget Breakdown List (چقدر بوده، چقدر خرج شده، چقدر مانده) */}
+      {/* Detailed Budget Breakdown Section (تفکیک بودجه‌ها: چقدر کسر شده و چقدر مانده) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-bold text-slate-300">
-            ریز بودجه‌ها (کسر خودکار پس از هر خرج)
+          <div>
+            <h3 className="text-xs font-bold text-white">گزارش تفکیکی هر بودجه (کسر شده و مانده)</h3>
+            <p className="text-[10px] text-slate-400">لمس هر بودجه برای مشاهده لیست اقلام کسر شده</p>
+          </div>
+          <span className="text-[11px] text-teal-400 font-bold">
+            {toPersianDigits(budgets.length)} سرفصل بودجه
           </span>
-          <span className="text-[11px] text-slate-400">{toPersianDigits(budgets.length)} دسته‌بندی</span>
         </div>
 
         {budgets.map((budget) => {
@@ -234,104 +248,193 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
             budget,
             expenses
           );
+          const budgetExpenses = expenses.filter((e) => e.budgetId === budget.id);
+          const isExpanded = expandedBudgetId === budget.id;
 
           return (
             <div
               key={budget.id}
-              className="bg-slate-900/90 border border-slate-800/80 p-4 rounded-3xl shadow-sm hover:border-slate-700 transition"
+              className="bg-slate-900/90 border border-slate-800/80 rounded-3xl shadow-sm overflow-hidden transition-all duration-200 hover:border-slate-700"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm"
-                    style={{ backgroundColor: budget.color }}
+              {/* Card Header & Controls */}
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm"
+                      style={{ backgroundColor: budget.color }}
+                    />
+                    <div>
+                      <h4 className="text-sm font-bold text-white">{budget.title}</h4>
+                      <span className="text-[10px] text-slate-400">
+                        {isOverBudget ? (
+                          <span className="text-rose-400 font-bold">
+                            تجاوز از سقف: {formatMoney(overAmount, currencyUnit)}
+                          </span>
+                        ) : (
+                          <span>{toPersianDigits(percentage.toFixed(0))}٪ از این بودجه کسر گردیده</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onQuickAddExpenseForBudget(budget.id)}
+                      title="ثبت خرج برای این بودجه"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/25 transition active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>ثبت خرج</span>
+                    </button>
+
+                    <button
+                      onClick={() => openEditModal(budget)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                      title="ویرایش بودجه"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      onClick={() => onDeleteBudget(budget.id)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                      title="حذف بودجه"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Visual Consumption Bar */}
+                <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden p-0.5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      isOverBudget
+                        ? 'bg-rose-500'
+                        : percentage > 85
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                    }`}
+                    style={{
+                      width: `${Math.min(percentage, 100)}%`,
+                      backgroundColor: !isOverBudget ? budget.color : undefined,
+                    }}
                   />
-                  <div>
-                    <h4 className="text-xs font-bold text-white">{budget.title}</h4>
-                    <span className="text-[10px] text-slate-400">
-                      {isOverBudget ? (
-                        <span className="text-rose-400 font-bold">
-                          تجاوز از سقف: {formatMoney(overAmount, currencyUnit)}
-                        </span>
-                      ) : (
-                        <span>{toPersianDigits(percentage.toFixed(0))}٪ مصرف شده</span>
-                      )}
+                </div>
+
+                {/* Clear 3-Box Breakdown: چقدر بوده، چقدر کسر شده، چقدر مانده */}
+                <div className="grid grid-cols-3 gap-2 text-right">
+                  {/* 1. Original Budget */}
+                  <div className="bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800/80">
+                    <span className="text-[10px] text-slate-400 block mb-0.5 font-medium">بودجه مصوب:</span>
+                    <span className="text-xs font-bold text-slate-200 block">
+                      {formatMoney(budget.allocatedAmount, '')}
+                    </span>
+                    <span className="text-[9px] text-slate-500 mt-0.5 block">{currencyUnit}</span>
+                  </div>
+
+                  {/* 2. Amount Deducted / Spent */}
+                  <div className="bg-rose-950/20 p-2.5 rounded-2xl border border-rose-500/30">
+                    <span className="text-[10px] text-rose-300/80 block mb-0.5 font-medium">کسر شده:</span>
+                    <span className="text-xs font-extrabold text-rose-400 block">
+                      {spent > 0 ? `-${formatMoney(spent, '')}` : '۰'}
+                    </span>
+                    <span className="text-[9px] text-rose-400/60 mt-0.5 block">{currencyUnit}</span>
+                  </div>
+
+                  {/* 3. Remaining */}
+                  <div
+                    className={`p-2.5 rounded-2xl border ${
+                      remaining >= 0
+                        ? 'bg-emerald-950/20 border-emerald-500/30'
+                        : 'bg-rose-950/30 border-rose-500/50'
+                    }`}
+                  >
+                    <span className="text-[10px] text-slate-400 block mb-0.5 font-medium">مانده بودجه:</span>
+                    <span
+                      className={`text-xs font-extrabold block ${
+                        remaining >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {formatMoney(remaining, '')}
+                    </span>
+                    <span className="text-[9px] text-slate-500 mt-0.5 block">
+                      {remaining < 0 ? 'کسری سقف!' : currencyUnit}
                     </span>
                   </div>
                 </div>
 
-                {/* Edit & Delete Controls */}
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => onQuickAddExpenseForBudget(budget.id)}
-                    title="ثبت خرج برای این بودجه"
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 text-[10px] font-semibold hover:bg-emerald-500/25 transition"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>خرج</span>
-                  </button>
-
-                  <button
-                    onClick={() => openEditModal(budget)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    onClick={() => onDeleteBudget(budget.id)}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {/* Accordion Toggle: ریز مخارج کسر شده */}
+                <button
+                  onClick={() => toggleExpand(budget.id)}
+                  className="w-full flex items-center justify-between py-2 px-3 rounded-xl bg-slate-950/40 hover:bg-slate-950/80 border border-slate-800/60 text-xs text-slate-300 transition"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-teal-400" />
+                    <span>ریز مخارج کسر شده از این بودجه</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-slate-400 font-bold">
+                      {toPersianDigits(budgetExpenses.length)} قلم
+                    </span>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
               </div>
 
-              {/* Consumption Progress Bar */}
-              <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden mb-3 p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    isOverBudget
-                      ? 'bg-rose-500'
-                      : percentage > 85
-                      ? 'bg-amber-400'
-                      : 'bg-emerald-400'
-                  }`}
-                  style={{
-                    width: `${Math.min(percentage, 100)}%`,
-                    backgroundColor: !isOverBudget ? budget.color : undefined,
-                  }}
-                />
-              </div>
+              {/* Expanded Itemized Expenses List */}
+              {isExpanded && (
+                <div className="bg-slate-950/90 border-t border-slate-800/80 p-3.5 space-y-2 animate-in fade-in duration-150">
+                  {budgetExpenses.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-xs">
+                      هنوز هیچ خرجی از این بودجه کسر نشده است (تمام سقف دست‌نخورده باقی مانده).
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {budgetExpenses.map((exp) => (
+                        <div
+                          key={exp.id}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/90 border border-slate-800/80 text-xs"
+                        >
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-white text-xs">{exp.title}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                              <span className="flex items-center gap-0.5">
+                                <Calendar className="w-3 h-3 text-slate-500" />
+                                {exp.date}
+                              </span>
+                              <span className="flex items-center gap-0.5">
+                                <Clock className="w-3 h-3 text-slate-500" />
+                                {exp.time}
+                              </span>
+                              {exp.note && <span className="text-slate-400">({exp.note})</span>}
+                            </div>
+                          </div>
 
-              {/* The Three Core Numbers Required by User */}
-              <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-2.5 rounded-2xl border border-slate-800/60 text-right">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">سقف بودجه:</span>
-                  <span className="text-[11px] font-bold text-slate-200 block">
-                    {formatMoney(budget.allocatedAmount, '')}
-                  </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-rose-400 text-xs">
+                              -{formatMoney(exp.amount, currencyUnit)}
+                            </span>
+                            {onDeleteExpense && (
+                              <button
+                                onClick={() => onDeleteExpense(exp.id)}
+                                title="حذف این خرج و بازگشت وجه به بودجه"
+                                className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 block">خرج شده:</span>
-                  <span className="text-[11px] font-bold text-rose-400 block">
-                    {formatMoney(spent, '')}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 block">مانده بودجه:</span>
-                  <span
-                    className={`text-[11px] font-extrabold block ${
-                      remaining < 0 ? 'text-rose-400' : 'text-emerald-400'
-                    }`}
-                  >
-                    {formatMoney(remaining, '')}
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
           );
         })}
@@ -363,7 +466,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="مثال: خرید مواد غذایی یا اقساط بانکی"
+                  placeholder="مثال: خرج‌های روزمره یا سایر هزینه‌ها"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
                   autoFocus
                 />
@@ -378,7 +481,7 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
                   inputMode="numeric"
                   value={formAmountStr}
                   onChange={(e) => setFormAmountStr(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="مثال: ۶۵۰۰۰۰۰"
+                  placeholder="مثال: ۸۰۰۰۰۰۰"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm font-bold text-teal-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
                 />
               </div>

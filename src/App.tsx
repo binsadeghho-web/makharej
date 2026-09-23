@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, MonthlyFile, Budget, Deposit, Expense } from './types/finance';
 import {
   loadAppState,
@@ -11,6 +11,11 @@ import {
   calculateMonthSummary,
   closeAndArchiveCurrentMonth,
 } from './services/storage';
+import {
+  getStoredSupabaseConfig,
+  pushStateToSupabase,
+  fetchStateFromSupabase,
+} from './services/supabase';
 import { Header } from './components/Header';
 import { BottomNav, TabType } from './components/BottomNav';
 import { DepositsSection } from './components/DepositsSection';
@@ -19,30 +24,93 @@ import { ExpensesSection } from './components/ExpensesSection';
 import { ArchiveSection } from './components/ArchiveSection';
 import { AddExpenseModal } from './components/AddExpenseModal';
 import { CloseMonthModal } from './components/CloseMonthModal';
+import { SupabaseSettingsModal } from './components/SupabaseSettingsModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { getCurrentShamsiDate } from './utils/shamsi';
-import { Check, Smartphone, CheckCircle } from 'lucide-react';
+import { Check, CheckCircle } from 'lucide-react';
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadAppState());
   const [activeTab, setActiveTab] = useState<TabType>('deposits');
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isCloseMonthOpen, setIsCloseMonthOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [targetBudgetIdForExpense, setTargetBudgetIdForExpense] = useState<string | undefined>(
     undefined
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'not_configured'>('not_configured');
 
-  // Sync to LocalStorage whenever state changes
-  useEffect(() => {
-    saveAppState(state);
-  }, [state]);
-
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
     }, 3200);
+  }, []);
+
+  // Initial Supabase Sync on App Load
+  useEffect(() => {
+    const config = getStoredSupabaseConfig();
+    if (!config.isConfigured) {
+      setSyncStatus('not_configured');
+      return;
+    }
+
+    setSyncStatus('syncing');
+    fetchStateFromSupabase()
+      .then((remote) => {
+        if (remote && remote.currentFile) {
+          setState(remote);
+          setSyncStatus('synced');
+          showToast('اطلاعات با دیتابیس Supabase همگام شد');
+        } else {
+          // If remote is empty, push local state to initialize it
+          pushStateToSupabase(state).then((ok) => {
+            setSyncStatus(ok ? 'synced' : 'error');
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Supabase init error:', err);
+        setSyncStatus('error');
+      });
+  }, [showToast]);
+
+  // Sync state to LocalStorage and Supabase whenever state changes
+  useEffect(() => {
+    saveAppState(state);
+    const config = getStoredSupabaseConfig();
+    if (config.isConfigured) {
+      setSyncStatus('syncing');
+      pushStateToSupabase(state).then((ok) => {
+        setSyncStatus(ok ? 'synced' : 'error');
+      });
+    }
+  }, [state]);
+
+  const handleManualSync = async () => {
+    const config = getStoredSupabaseConfig();
+    if (!config.isConfigured) {
+      setIsSupabaseModalOpen(true);
+      return;
+    }
+    setSyncStatus('syncing');
+    const ok = await pushStateToSupabase(state);
+    setSyncStatus(ok ? 'synced' : 'error');
+    if (ok) {
+      showToast('اطلاعات با موفقیت در Supabase ذخیره شد');
+    } else {
+      showToast('خطا در ذخیره‌سازی در دیتابیس');
+    }
+  };
+
+  const handleConfigSaved = () => {
+    const config = getStoredSupabaseConfig();
+    if (config.isConfigured) {
+      handleManualSync();
+    } else {
+      setSyncStatus('not_configured');
+    }
   };
 
   const currentFile = state.currentFile;
@@ -162,7 +230,7 @@ export default function App() {
         expenses: [newExpense, ...prev.currentFile.expenses],
       },
     }));
-    showToast(`خرج «${expenseData.title}» ثبت و بلافاصله از بودجه کسر گردید`);
+    showToast(`خرج «${expenseData.title}» ثبت و از سرفصل کسر گردید`);
   };
 
   const handleDeleteExpense = (expenseId: string) => {
@@ -173,7 +241,7 @@ export default function App() {
         expenses: prev.currentFile.expenses.filter((e) => e.id !== expenseId),
       },
     }));
-    showToast('خرج حذف شد و مبلغ به بودجه بازگردانده شد');
+    showToast('خرج حذف شد و مبلغ به مانده بودجه بازگردانده شد');
   };
 
   // 4. Archiving & Close Month Handler
@@ -228,7 +296,11 @@ export default function App() {
       {/* Mobile-portrait framed container */}
       <div className="w-full max-w-md min-h-screen bg-slate-950 flex flex-col relative border-x border-slate-900 shadow-2xl pb-24">
         {/* Top Header */}
-        <Header currentMonthName={currentFile.monthName} />
+        <Header
+          currentMonthName={currentFile.monthName}
+          onOpenSupabaseSettings={() => setIsSupabaseModalOpen(true)}
+          syncStatus={syncStatus}
+        />
 
         {/* Main Content View based on activeTab */}
         <main className="flex-1 p-4 overflow-y-auto">
@@ -254,6 +326,7 @@ export default function App() {
               onUpdateBudget={handleUpdateBudget}
               onDeleteBudget={handleDeleteBudget}
               onQuickAddExpenseForBudget={handleQuickAddExpenseForBudget}
+              onDeleteExpense={handleDeleteExpense}
               currencyUnit={state.currencyUnit}
             />
           )}
@@ -316,6 +389,15 @@ export default function App() {
           summary={summary}
           onConfirmClose={handleConfirmCloseMonth}
           currencyUnit={state.currencyUnit}
+        />
+
+        {/* Supabase Cloudflare Database Settings Modal */}
+        <SupabaseSettingsModal
+          isOpen={isSupabaseModalOpen}
+          onClose={() => setIsSupabaseModalOpen(false)}
+          onConfigSaved={handleConfigSaved}
+          syncStatus={syncStatus}
+          onManualSync={handleManualSync}
         />
 
         {/* Floating Toast Notification */}
