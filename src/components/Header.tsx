@@ -11,6 +11,7 @@ interface HeaderProps {
   isStaticHost?: boolean;
   onRetrySync?: () => void;
   onOpenDatabaseModal?: () => void;
+  onRefreshRemote?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   isStaticHost = false,
   onRetrySync,
   onOpenDatabaseModal,
+  onRefreshRemote,
 }) => {
   const today = getCurrentShamsiDate();
 
@@ -29,24 +31,37 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Left: Background Database Status Indicator & PWA Install */}
         <div className="flex items-center gap-1.5">
           {syncStatus === 'synced' && (
-            <button
-              onClick={onOpenDatabaseModal}
-              title={
-                activeProvider === 'supabase'
-                  ? 'دیتابیس ابری Supabase متصل است (برای تنظیمات کلیک کنید)'
-                  : activeProvider === 'server'
-                  ? 'دیتابیس سرور متصل است (برای تنظیمات کلیک کنید)'
-                  : 'دیتابیس متصل است'
-              }
-              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition cursor-pointer"
-            >
-              {activeProvider === 'supabase' ? (
-                <Cloud className="w-3 h-3 text-emerald-400" />
-              ) : (
-                <Database className="w-3 h-3 text-emerald-400" />
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onOpenDatabaseModal}
+                title={
+                  activeProvider === 'supabase'
+                    ? 'دیتابیس ابری Supabase متصل است (برای تنظیمات کلیک کنید)'
+                    : activeProvider === 'server'
+                    ? 'دیتابیس سرور متصل است (برای تنظیمات کلیک کنید)'
+                    : 'دیتابیس متصل است'
+                }
+                className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition cursor-pointer"
+              >
+                {activeProvider === 'supabase' ? (
+                  <Cloud className="w-3 h-3 text-emerald-400" />
+                ) : (
+                  <Database className="w-3 h-3 text-emerald-400" />
+                )}
+                <span>{activeProvider === 'supabase' ? 'دیتابیس ابری' : 'دیتابیس متصل'}</span>
+              </button>
+
+              {onRefreshRemote && (
+                <button
+                  type="button"
+                  onClick={onRefreshRemote}
+                  title="دریافت تغییرات جدید از سایر دستگاه‌ها"
+                  className="p-1 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-800/90 transition cursor-pointer active:rotate-180"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </button>
               )}
-              <span>{activeProvider === 'supabase' ? 'دیتابیس ابری' : 'دیتابیس متصل'}</span>
-            </button>
+            </div>
           )}
 
           {syncStatus === 'local_storage' && (

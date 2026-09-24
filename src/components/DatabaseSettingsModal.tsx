@@ -361,7 +361,23 @@ export const DatabaseSettingsModal: React.FC<DatabaseSettingsModalProps> = ({
                   • <strong className="text-white">روش ۲ (از طریق داشبورد کلادفلر):</strong> در منوی Cloudflare Pages &gt; Settings &gt; Environment variables متغیرهای <code className="text-teal-300 font-mono">VITE_SUPABASE_URL</code> و <code className="text-teal-300 font-mono">VITE_SUPABASE_ANON_KEY</code> را وارد نمایید.
                 </p>
                 <p>
-                  • <strong className="text-amber-300">مرحله حیاتی:</strong> حتماً کد SQL بالا را در SQL Editor داشبورد Supabase اجرا کنید تا جدول‌ها و دسترسی‌های RLS آماده شوند.
+                  • <strong className="text-amber-300">مرحله حیاتی:</strong> حتماً کد SQL بالا را در SQL Editor داشبورد Supabase اجرا کنید تا جدول‌ها، مجوزهای دسترسی و انتشار زنده (Realtime) فعال گردند.
+                </p>
+              </div>
+            </div>
+
+            {/* Multi-Device Sync Guide */}
+            <div className="p-3 rounded-xl bg-slate-950/90 border border-emerald-800/40 text-[11px] space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-400 text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>چک‌لیست همگام‌سازی بین دو دستگاه (موبایل و لپ‌تاپ):</span>
+              </div>
+              <div className="space-y-1 text-[10px] text-slate-300 leading-relaxed pr-1">
+                <p>
+                  ۱. <strong className="text-white">بررسی نشان بالای صفحه در هر دو دستگاه:</strong> در بالای صفحه هر دو دستگاه باید نشان سبز رنگ <strong>«دیتابیس ابری»</strong> دیده شود. اگر در یکی از دستگاه‌ها نشان زرد <strong>«دیتابیس محلی»</strong> است، یعنی URL و Key سوپابیس هنوز در آن دستگاه وارد نشده است.
+                </p>
+                <p>
+                  ۲. <strong className="text-white">همگام‌سازی زنده (Realtime):</strong> برنامه به محض ثبت داده در یک دستگاه، تغییرات را به‌صورت زنده به دستگاه دیگر می‌فرستد. همچنین با باز کردن دوباره تب یا زدن آیکون رفرش کنار نشان دیتابیس، سریعاً آخرین تغییرات فراخوانی می‌شوند.
                 </p>
               </div>
             </div>

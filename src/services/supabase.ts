@@ -266,9 +266,9 @@ export async function pushStateToSupabase(state: AppState): Promise<{ success: b
 }
 
 /**
- * Fetch latest AppState from Supabase
+ * Fetch latest AppState snapshot with timestamp from Supabase
  */
-export async function fetchStateFromSupabase(): Promise<AppState | null> {
+export async function fetchLatestSupabaseSnapshot(): Promise<{ state: AppState; updatedAt: string } | null> {
   const client = getSupabaseClient();
   if (!client) return null;
 
@@ -283,9 +283,63 @@ export async function fetchStateFromSupabase(): Promise<AppState | null> {
       return null;
     }
 
-    return data.data as AppState;
+    return {
+      state: data.data as AppState,
+      updatedAt: data.updated_at || '',
+    };
   } catch (err) {
-    console.error('Failed to load from Supabase', err);
+    console.warn('Failed to load snapshot from Supabase', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch latest AppState from Supabase
+ */
+export async function fetchStateFromSupabase(): Promise<AppState | null> {
+  const snapshot = await fetchLatestSupabaseSnapshot();
+  return snapshot ? snapshot.state : null;
+}
+
+/**
+ * Subscribe to realtime changes broadcast by Supabase from other devices
+ */
+export function subscribeToSupabaseChanges(
+  onRemoteUpdate: (remoteState: AppState, updatedAt: string) => void
+): (() => void) | null {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  try {
+    const channelName = `realtime_sync_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const channel = client
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'finance_app_state',
+        },
+        (payload: any) => {
+          if (payload?.new && payload.new.data) {
+            onRemoteUpdate(payload.new.data as AppState, payload.new.updated_at || new Date().toISOString());
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Realtime websocket connected to Supabase');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn('Realtime channel error notice:', err);
+        }
+      });
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Failed to subscribe to Supabase realtime:', err);
     return null;
   }
 }
@@ -324,4 +378,8 @@ create policy "allow_anon_all_finance_app_state" on public.finance_app_state for
 
 drop policy if exists "allow_anon_all_monthly_files" on public.monthly_files;
 create policy "allow_anon_all_monthly_files" on public.monthly_files for all using (true) with check (true);
+
+-- ۶. فعال‌سازی همگام‌سازی زنده و لحظه‌ای (Realtime) بین تمام دستگاه‌ها:
+alter publication supabase_realtime add table public.finance_app_state;
+alter publication supabase_realtime add table public.monthly_files;
 `;

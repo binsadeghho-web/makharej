@@ -1,6 +1,11 @@
 import { AppState, MonthlyFile, MonthSummary, Budget, Deposit, Expense } from '../types/finance';
 import { getCurrentShamsiDate, getShamsiMonthTitle, getNextShamsiMonth } from '../utils/shamsi';
-import { getStoredSupabaseConfig, pushStateToSupabase, fetchStateFromSupabase } from './supabase';
+import {
+  getStoredSupabaseConfig,
+  pushStateToSupabase,
+  fetchStateFromSupabase,
+  fetchLatestSupabaseSnapshot,
+} from './supabase';
 
 const STORAGE_KEY = 'shamsi_finance_pwa_state_v1';
 
@@ -450,6 +455,48 @@ export async function loadStateFromDatabase(): Promise<{
   // 4. Try LocalStorage
   const local = loadAppState();
   return { state: local, source: 'localstorage', provider: activeProvider, isStaticHost };
+}
+
+/**
+ * Fetches the latest remote state from server or Supabase (for multi-device sync)
+ */
+export async function fetchLatestRemoteState(): Promise<{
+  state: AppState;
+  updatedAt: string;
+  provider: DatabaseProvider;
+} | null> {
+  const { isServer, isSupabase } = await probeDatabaseBackend();
+
+  if (isServer) {
+    try {
+      const res = await fetch('/api/state');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data && json.data.currentFile) {
+          return {
+            state: json.data,
+            updatedAt: json.data.updatedAt || new Date().toISOString(),
+            provider: 'server',
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching latest from server:', e);
+    }
+  }
+
+  if (isSupabase) {
+    const snapshot = await fetchLatestSupabaseSnapshot();
+    if (snapshot && snapshot.state && snapshot.state.currentFile) {
+      return {
+        state: snapshot.state,
+        updatedAt: snapshot.updatedAt,
+        provider: 'supabase',
+      };
+    }
+  }
+
+  return null;
 }
 
 /**

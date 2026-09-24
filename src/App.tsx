@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, MonthlyFile, Budget, Deposit, Expense } from './types/finance';
 import {
   loadAppState,
@@ -12,12 +12,15 @@ import {
   loadStateFromDatabase,
   calculateMonthSummary,
   closeAndArchiveCurrentMonth,
+  fetchLatestRemoteState,
+  saveToIndexedDB,
   DatabaseProvider,
 } from './services/storage';
 import {
   getStoredSupabaseConfig,
   pushStateToSupabase,
   fetchStateFromSupabase,
+  subscribeToSupabaseChanges,
 } from './services/supabase';
 import { Header } from './components/Header';
 import { BottomNav, TabType } from './components/BottomNav';
@@ -48,6 +51,10 @@ export default function App() {
   const [isStaticHost, setIsStaticHost] = useState(false);
   const [isDbModalOpen, setIsDbModalOpen] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+
+  // Guards to prevent infinite sync loops between devices
+  const isRemoteUpdateRef = useRef(false);
+  const lastRemoteTimestampRef = useRef<string>('');
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -88,9 +95,111 @@ export default function App() {
     };
   }, []);
 
-  // 2. Strict 3-Second Save to Database on State Changes
+  // 2. Pull latest state from cloud database (for cross-device synchronization)
+  const handlePullRemoteState = useCallback(async (silent = false) => {
+    try {
+      if (!silent) {
+        setSyncStatus('syncing');
+      }
+      const remote = await fetchLatestRemoteState();
+      if (remote && remote.state && remote.state.currentFile) {
+        // Compare with current local state
+        const isDifferent = JSON.stringify(remote.state) !== JSON.stringify(state);
+
+        if (isDifferent) {
+          isRemoteUpdateRef.current = true;
+          lastRemoteTimestampRef.current = remote.updatedAt;
+          setState(remote.state);
+          saveAppState(remote.state);
+          saveToIndexedDB(remote.state).catch(() => {});
+          setActiveProvider(remote.provider);
+          setSyncStatus('synced');
+          setDbError(null);
+          showToast('🔄 اطلاعات از دستگاه دیگر همگام‌سازی شد');
+        } else {
+          setSyncStatus('synced');
+          if (!silent) {
+            showToast('اطلاعات با سایر دستگاه‌ها کاملاً همگام است');
+          }
+        }
+      } else if (!silent) {
+        setSyncStatus('synced');
+        showToast('ارتباط با دیتابیس پایدار است');
+      }
+    } catch (e) {
+      console.warn('Error pulling remote state:', e);
+      if (!silent) {
+        showToast('خطا در دریافت اطلاعات جدید از سرور');
+      }
+    }
+  }, [state, showToast]);
+
+  // 3. Multi-device Realtime Sync (WebSocket Subscription)
   useEffect(() => {
     if (!isInitialLoadDone) return;
+    if (activeProvider !== 'supabase') return;
+
+    const unsubscribe = subscribeToSupabaseChanges((remoteState, updatedAt) => {
+      if (updatedAt && lastRemoteTimestampRef.current && updatedAt <= lastRemoteTimestampRef.current) {
+        return; // Already processed
+      }
+
+      isRemoteUpdateRef.current = true;
+      lastRemoteTimestampRef.current = updatedAt;
+      setState(remoteState);
+      saveAppState(remoteState);
+      saveToIndexedDB(remoteState).catch(() => {});
+      setSyncStatus('synced');
+      setDbError(null);
+      showToast('🔄 تغییرات ثبت‌شده در دستگاه دیگر همگام‌سازی شد');
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isInitialLoadDone, activeProvider, showToast]);
+
+  // 4. Tab Visibility & Window Focus Sync (When user switches between devices / phone lock)
+  useEffect(() => {
+    if (!isInitialLoadDone) return;
+    if (activeProvider !== 'supabase' && activeProvider !== 'server') return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handlePullRemoteState(true);
+      }
+    };
+
+    const onFocus = () => {
+      handlePullRemoteState(true);
+    };
+
+    window.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+
+    // Periodic gentle check every 12 seconds when active
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        handlePullRemoteState(true);
+      }
+    }, 12000);
+
+    return () => {
+      window.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+      clearInterval(interval);
+    };
+  }, [isInitialLoadDone, activeProvider, handlePullRemoteState]);
+
+  // 5. Strict Save to Database on State Changes (with infinite loop protection)
+  useEffect(() => {
+    if (!isInitialLoadDone) return;
+
+    // Guard: Do not re-save if this change came from a remote device
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
 
     setSyncStatus('syncing');
     let isCancelled = false;
@@ -364,6 +473,7 @@ export default function App() {
           isStaticHost={isStaticHost}
           onRetrySync={handleRetrySave}
           onOpenDatabaseModal={() => setIsDbModalOpen(true)}
+          onRefreshRemote={() => handlePullRemoteState(false)}
         />
 
         {/* Prominent Database Save Error Banner (Explicit User Requirement) */}
