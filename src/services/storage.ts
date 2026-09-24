@@ -128,6 +128,108 @@ export function saveAppState(state: AppState): void {
   }
 }
 
+export const DATABASE_TIMEOUT_MS = 3000;
+
+export interface DatabaseSaveResult {
+  success: boolean;
+  durationMs: number;
+  error?: string;
+  isTimeout?: boolean;
+}
+
+/**
+ * Saves app state to the persistent server database with strict 3-second timeout.
+ * If saving takes longer than 3 seconds or fails, it reports failure immediately.
+ */
+export async function saveStateToDatabase(state: AppState): Promise<DatabaseSaveResult> {
+  const start = Date.now();
+
+  // Always update local cache immediately
+  saveAppState(state);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, DATABASE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+    const durationMs = Date.now() - start;
+
+    if (!response.ok) {
+      return {
+        success: false,
+        durationMs,
+        error: `پاسخ ناموفق از سرور (کد ${response.status})`,
+      };
+    }
+
+    const data = await response.json();
+    if (data && data.success) {
+      return {
+        success: true,
+        durationMs,
+      };
+    } else {
+      return {
+        success: false,
+        durationMs,
+        error: data?.error || 'خطا در ثبت دیتابیس',
+      };
+    }
+  } catch (err: any) {
+    clearTimeout(timer);
+    const durationMs = Date.now() - start;
+    const isTimeout = err?.name === 'AbortError' || durationMs >= DATABASE_TIMEOUT_MS;
+
+    return {
+      success: false,
+      durationMs,
+      isTimeout,
+      error: isTimeout
+        ? 'ثبت نشد: عملیات ذخیره در دیتابیس بیش از ۳ ثانیه طول کشید'
+        : (err?.message || 'خطا در اتصال به دیتابیس'),
+    };
+  }
+}
+
+/**
+ * Loads app state from server database with 3-second timeout,
+ * falling back to localStorage if offline.
+ */
+export async function loadStateFromDatabase(): Promise<{ state: AppState; fromServer: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, DATABASE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('/api/state', { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.data && result.data.currentFile) {
+        saveAppState(result.data);
+        return { state: result.data, fromServer: true };
+      }
+    }
+  } catch (err: any) {
+    clearTimeout(timer);
+    console.warn('Could not load from server database within 3s, falling back to local cache:', err);
+  }
+
+  const localState = loadAppState();
+  return { state: localState, fromServer: false };
+}
+
 /**
  * Calculates budget item metrics (allocated, spent, remaining, percentage)
  */

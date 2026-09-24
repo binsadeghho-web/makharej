@@ -8,6 +8,8 @@ import { AppState, MonthlyFile, Budget, Deposit, Expense } from './types/finance
 import {
   loadAppState,
   saveAppState,
+  saveStateToDatabase,
+  loadStateFromDatabase,
   calculateMonthSummary,
   closeAndArchiveCurrentMonth,
 } from './services/storage';
@@ -26,10 +28,11 @@ import { AddExpenseModal } from './components/AddExpenseModal';
 import { CloseMonthModal } from './components/CloseMonthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { getCurrentShamsiDate } from './utils/shamsi';
-import { Check, CheckCircle } from 'lucide-react';
+import { Check, CheckCircle, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadAppState());
+  const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('deposits');
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -38,54 +41,96 @@ export default function App() {
     undefined
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'not_configured'>('not_configured');
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+  const [dbError, setDbError] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3200);
+    }, 4000);
   }, []);
 
-  // Initial Supabase Sync on App Load
+  // 1. Initial Load from Persistent Server Database
+  // Survives browser history / cache / localStorage clear!
   useEffect(() => {
-    const config = getStoredSupabaseConfig();
-    if (!config.isConfigured) {
-      setSyncStatus('not_configured');
-      return;
-    }
-
-    setSyncStatus('syncing');
-    fetchStateFromSupabase()
-      .then((remote) => {
-        if (remote && remote.currentFile) {
-          setState(remote);
-          setSyncStatus('synced');
-          showToast('اطلاعات با دیتابیس Supabase همگام شد');
-        } else {
-          // If remote is empty, push local state to initialize it
-          pushStateToSupabase(state).then((ok) => {
-            setSyncStatus(ok ? 'synced' : 'error');
-          });
+    let isMounted = true;
+    loadStateFromDatabase()
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.state && res.state.currentFile) {
+          setState(res.state);
+          if (res.fromServer) {
+            setSyncStatus('synced');
+            setDbError(null);
+          }
         }
+        setIsInitialLoadDone(true);
       })
       .catch((err) => {
-        console.error('Supabase init error:', err);
-        setSyncStatus('error');
+        if (!isMounted) return;
+        console.error('Error during initial database load:', err);
+        setIsInitialLoadDone(true);
       });
-  }, [showToast]);
 
-  // Sync state to LocalStorage and Supabase whenever state changes
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Strict 3-Second Save to Persistent Database on State Changes
   useEffect(() => {
-    saveAppState(state);
-    const config = getStoredSupabaseConfig();
-    if (config.isConfigured) {
-      setSyncStatus('syncing');
-      pushStateToSupabase(state).then((ok) => {
-        setSyncStatus(ok ? 'synced' : 'error');
-      });
-    }
-  }, [state]);
+    if (!isInitialLoadDone) return;
+
+    setSyncStatus('syncing');
+    let isCancelled = false;
+
+    saveStateToDatabase(state).then((res) => {
+      if (isCancelled) return;
+
+      if (res.success) {
+        setSyncStatus('synced');
+        setDbError(null);
+
+        // Optional cloud backup to Supabase if configured
+        const config = getStoredSupabaseConfig();
+        if (config.isConfigured) {
+          pushStateToSupabase(state).catch((e) => {
+            console.warn('Supabase secondary sync failed:', e);
+          });
+        }
+      } else {
+        setSyncStatus('error');
+        const errorMsg =
+          res.error || 'ثبت نشد: اطلاعات تا ۳ ثانیه در دیتابیس ثبت نشد';
+        setDbError(errorMsg);
+        showToast('⚠️ ثبت نشد! اطلاعات تا ۳ ثانیه در دیتابیس ثبت نشد.');
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [state, isInitialLoadDone, showToast]);
+
+  // Retry save manually
+  const handleRetrySave = () => {
+    setSyncStatus('syncing');
+    setDbError(null);
+    showToast('در حال تلاش مجدد برای ثبت در دیتابیس...');
+
+    saveStateToDatabase(state).then((res) => {
+      if (res.success) {
+        setSyncStatus('synced');
+        setDbError(null);
+        showToast('اطلاعات با موفقیت در دیتابیس ثبت شد');
+      } else {
+        setSyncStatus('error');
+        setDbError(res.error || 'ثبت نشد: اطلاعات در ۳ ثانیه در دیتابیس ذخیره نشد');
+        showToast('⚠️ ثبت نشد! مجدداً عملیات با خطا مواجه شد.');
+      }
+    });
+  };
 
   const currentFile = state.currentFile;
   const summary = calculateMonthSummary(currentFile);
@@ -299,7 +344,38 @@ export default function App() {
         <Header
           currentMonthName={currentFile.monthName}
           syncStatus={syncStatus}
+          onRetrySync={handleRetrySave}
         />
+
+        {/* Prominent Database Save Error Banner (Explicit User Requirement) */}
+        {dbError && (
+          <div className="mx-3 my-2 p-3 rounded-2xl bg-rose-950/90 border border-rose-500/80 shadow-lg text-right text-xs text-rose-100 flex items-start gap-2.5 animate-in slide-in-from-top-2 duration-150">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1.5">
+              <div className="font-black text-rose-200 text-xs">
+                ⚠️ ثبت نشد! اطلاعات تا ۳ ثانیه در دیتابیس ثبت نشد.
+              </div>
+              <p className="text-[11px] text-rose-300/90 leading-relaxed">
+                {dbError}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleRetrySave}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] shadow-sm transition active:scale-95 cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>تلاش مجدد برای ثبت</span>
+                </button>
+                <button
+                  onClick={() => setDbError(null)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 font-medium text-[11px] cursor-pointer"
+                >
+                  بستن پیام
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content View based on activeTab */}
         <main className="flex-1 p-4 overflow-y-auto">

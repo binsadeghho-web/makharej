@@ -1,42 +1,55 @@
 import React from 'react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { getCurrentShamsiDate } from '../utils/shamsi';
-import { Wallet, RefreshCw, Cloud, Check } from 'lucide-react';
+import { Wallet, RefreshCw, Database, AlertCircle } from 'lucide-react';
 
 interface HeaderProps {
   currentMonthName: string;
   syncStatus?: 'synced' | 'syncing' | 'error' | 'not_configured';
+  onRetrySync?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentMonthName,
-  syncStatus = 'not_configured',
+  syncStatus = 'synced',
+  onRetrySync,
 }) => {
   const today = getCurrentShamsiDate();
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-3.5 py-2.5">
       <div className="flex items-center justify-between">
-        {/* Left: Background Sync Indicator (only if active) & PWA Install */}
+        {/* Left: Background Database Status Indicator & PWA Install */}
         <div className="flex items-center gap-1.5">
           {syncStatus === 'synced' && (
             <div
-              title="اطلاعات به صورت خودکار در فضای ابری ذخیره است"
+              title="داده‌ها در دیتابیس پایدار سرور ذخیره هستند (با پاک کردن هیستوری مرورگر پاک نمی‌شود)"
               className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
             >
-              <Cloud className="w-3 h-3 text-emerald-400" />
-              <span>ابری</span>
+              <Database className="w-3 h-3 text-emerald-400" />
+              <span>دیتابیس متصل</span>
             </div>
           )}
 
           {syncStatus === 'syncing' && (
             <div
-              title="در حال همگام‌سازی خودکار با سرور"
+              title="در حال ثبت در دیتابیس (حداکثر ۳ ثانیه)..."
               className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-teal-500/15 border border-teal-500/30 text-teal-400"
             >
               <RefreshCw className="w-3 h-3 animate-spin text-teal-400" />
-              <span>ذخیره...</span>
+              <span>ثبت...</span>
             </div>
+          )}
+
+          {syncStatus === 'error' && (
+            <button
+              onClick={onRetrySync}
+              title="ثبت نشد! برای تلاش مجدد کلیک کنید"
+              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 border border-rose-500/40 text-rose-300 animate-pulse cursor-pointer hover:bg-rose-500/30 transition"
+            >
+              <AlertCircle className="w-3 h-3 text-rose-400" />
+              <span>ثبت نشد!</span>
+            </button>
           )}
 
           <PWAInstallButton variant="compact" />
