@@ -80,8 +80,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],
@@ -96,9 +95,10 @@ export default defineConfig(() => {
       'process.env.SUPABASE_PUBLISHABLE_KEY': JSON.stringify(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || ''),
       'process.env.SUPABASE_SECRET_KEY': JSON.stringify(process.env.SUPABASE_SECRET_KEY || ''),
       'process.env.SUPABASE_JWKS_URL': JSON.stringify(process.env.SUPABASE_JWKS_URL || ''),
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
     },
     server: {
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: false,
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

@@ -109,12 +109,11 @@ export default function App() {
         }
         setDbError(null);
       } else {
-        // Real database save failure or timeout > 3 seconds
+        // Real database save failure
         setSyncStatus('error');
-        const errorMsg =
-          res.error || 'ثبت نشد: اطلاعات تا ۳ ثانیه در دیتابیس ثبت نشد';
+        const errorMsg = res.error || 'ثبت نشد: خطا در ذخیره اطلاعات در دیتابیس';
         setDbError(errorMsg);
-        showToast('⚠️ ثبت نشد! اطلاعات تا ۳ ثانیه در دیتابیس ثبت نشد.');
+        showToast(`⚠️ ${errorMsg}`);
       }
     });
 
@@ -142,8 +141,9 @@ export default function App() {
         showToast('اطلاعات با موفقیت در دیتابیس ثبت شد');
       } else {
         setSyncStatus('error');
-        setDbError(res.error || 'ثبت نشد: اطلاعات در ۳ ثانیه در دیتابیس ذخیره نشد');
-        showToast('⚠️ ثبت نشد! مجدداً عملیات با خطا مواجه شد.');
+        const errorMsg = res.error || 'ثبت نشد: خطا در ذخیره اطلاعات در دیتابیس';
+        setDbError(errorMsg);
+        showToast(`⚠️ ${errorMsg}`);
       }
     });
   };

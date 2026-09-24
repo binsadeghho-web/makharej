@@ -82,6 +82,9 @@ export function getStoredSupabaseConfig(): SupabaseConfig {
   };
 }
 
+let cachedClient: SupabaseClient | null = null;
+let currentClientKey = '';
+
 export function saveStoredSupabaseConfig(config: Partial<SupabaseConfig>): void {
   try {
     const current = getStoredSupabaseConfig();
@@ -91,13 +94,13 @@ export function saveStoredSupabaseConfig(config: Partial<SupabaseConfig>): void 
       secretKey: (config.secretKey ?? current.secretKey ?? '').trim(),
     };
     localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(updated));
+    // Clear cached client to instantiate new credentials immediately
+    cachedClient = null;
+    currentClientKey = '';
   } catch (e) {
     console.error('Error saving supabase config', e);
   }
 }
-
-let cachedClient: SupabaseClient | null = null;
-let currentClientKey = '';
 
 export function getSupabaseClient(): SupabaseClient | null {
   const config = getStoredSupabaseConfig();
@@ -126,14 +129,14 @@ export function getSupabaseClient(): SupabaseClient | null {
 }
 
 /**
- * Test connectivity with Supabase
+ * Test connectivity with Supabase (both reading and writing)
  */
 export async function testSupabaseConnection(url: string, key: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!isValidHttpUrl(url)) {
       return {
         success: false,
-        message: 'آدرس URL وارد شده معتبر نیست. لطفاً آدرس معتبر مانند https://xyz.supabase.co وارد فرمایید.',
+        message: 'آدرس URL وارد شده نامعتبر است. نمونه صحیح: https://xyzcompany.supabase.co',
       };
     }
 
@@ -141,24 +144,51 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { error } = await client.from('finance_app_state').select('id').limit(1);
+    // 1. Test connection and table existence
+    const { error: selectError } = await client.from('finance_app_state').select('id').limit(1);
 
-    if (error) {
-      if (error.code === '42P01') {
+    if (selectError) {
+      if (selectError.code === '42P01') {
         return {
-          success: true,
-          message: 'اتصال به Supabase موفقیت‌آمیز است. جدول finance_app_state ساخته شود.',
+          success: false,
+          message: 'ارتباط با سرور Supabase برقرار شد، اما جدول finance_app_state در دیتابیس ساخته نشده است. لطفاً اسکریپت SQL پایین را در بخش SQL Editor داشبورد Supabase اجرا فرمایید.',
+        };
+      }
+      if (selectError.code === '42501' || selectError.message?.includes('row-level security') || selectError.message?.includes('policy')) {
+        return {
+          success: false,
+          message: 'دسترسی خواندن جدول توسط امنیت سطح سطر (RLS) مسدود شده است. لطفاً کد SQL زیر را در SQL Editor اجرا کنید.',
         };
       }
       return {
         success: false,
-        message: `خطای سرور: ${error.message}`,
+        message: `پاسخ از سرور: ${selectError.message} (کد: ${selectError.code || 'نامشخص'})`,
       };
     }
 
+    // 2. Test write access
+    const { error: writeError } = await client.from('finance_app_state').upsert(
+      {
+        id: 'connection_test_probe',
+        data: { test: true, time: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
+    if (writeError) {
+      return {
+        success: false,
+        message: `اتصال خواندن برقرار است اما ثبت داده مسدود است: ${writeError.message}. اسکریپت SQL پایین را در Supabase اجرا نمایید.`,
+      };
+    }
+
+    // Clean up probe record
+    await client.from('finance_app_state').delete().eq('id', 'connection_test_probe');
+
     return {
       success: true,
-      message: 'اتصال موفقیت‌آمیز بود و جدول دیتابیس نیز شناسایی شد.',
+      message: 'اتصال، خواندن و ثبت اطلاعات در دیتابیس Supabase با موفقیت ۱۰۰٪ تأیید شد!',
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -172,9 +202,11 @@ export async function testSupabaseConnection(url: string, key: string): Promise<
 /**
  * Sync entire AppState to Supabase database
  */
-export async function pushStateToSupabase(state: AppState): Promise<boolean> {
+export async function pushStateToSupabase(state: AppState): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return false;
+  if (!client) {
+    return { success: false, error: 'دیتابیس Supabase پیکربندی نشده است' };
+  }
 
   try {
     // 1. Save global state snapshot
@@ -188,28 +220,48 @@ export async function pushStateToSupabase(state: AppState): Promise<boolean> {
     );
 
     if (stateError) {
-      console.warn('Supabase state upsert error:', stateError.message);
+      console.warn('Supabase state upsert error:', stateError);
+      if (stateError.code === '42P01') {
+        return {
+          success: false,
+          error: 'جدول finance_app_state در دیتابیس وجود ندارد. لطفاً اسکریپت SQL را در SQL Editor سوپابیس اجرا فرمایید.',
+        };
+      }
+      if (stateError.code === '42501' || stateError.message?.includes('row-level security')) {
+        return {
+          success: false,
+          error: 'ثبت اطلاعات توسط RLS مسدود است. لطفاً اسکریپت SQL را در داشبورد سوپابیس اجرا نمایید.',
+        };
+      }
+      return { success: false, error: stateError.message };
     }
 
     // 2. Also save current active file to monthly_files table if table exists
     const currentFile = state.currentFile;
-    await client.from('monthly_files').upsert(
-      {
-        id: currentFile.id,
-        month_name: currentFile.monthName,
-        year: currentFile.year,
-        month: currentFile.month,
-        status: currentFile.status,
-        data: currentFile,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    );
+    if (currentFile) {
+      const { error: fileError } = await client.from('monthly_files').upsert(
+        {
+          id: currentFile.id,
+          month_name: currentFile.monthName,
+          year: currentFile.year,
+          month: currentFile.month,
+          status: currentFile.status,
+          data: currentFile,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
 
-    return true;
-  } catch (err) {
+      if (fileError) {
+        console.warn('Supabase monthly_files upsert warning:', fileError.message);
+      }
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
     console.error('Failed to sync to Supabase', err);
-    return false;
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -238,16 +290,17 @@ export async function fetchStateFromSupabase(): Promise<AppState | null> {
   }
 }
 
-export const SUPABASE_SETUP_SQL = `-- دستور ساخت جدول در بخش SQL Editor در داشبورد Supabase:
-create table if not exists finance_app_state (
+export const SUPABASE_SETUP_SQL = `-- دستور ساخت جدول و دسترسی کامل در بخش SQL Editor داشبورد Supabase:
+
+-- ۱. ساخت جدول اطلاعات سراسری برنامه (finance_app_state)
+create table if not exists public.finance_app_state (
   id text primary key default 'primary_state',
   data jsonb not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-alter table finance_app_state disable row level security;
-
-create table if not exists monthly_files (
+-- ۲. ساخت جدول ماه‌های آرشیو و جاری (monthly_files)
+create table if not exists public.monthly_files (
   id text primary key,
   month_name text not null,
   year integer not null,
@@ -257,5 +310,18 @@ create table if not exists monthly_files (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-alter table monthly_files disable row level security;
+-- ۳. غیرفعال‌سازی RLS برای عملکرد بدون مانع با کلید ناشناس (anon)
+alter table public.finance_app_state disable row level security;
+alter table public.monthly_files disable row level security;
+
+-- ۴. اعطای دسترسی مستقیم به کاربر عمومی (anon) و احراز هویت شده (authenticated)
+grant all on table public.finance_app_state to anon, authenticated, service_role;
+grant all on table public.monthly_files to anon, authenticated, service_role;
+
+-- ۵. تعریف مجوزهای تکمیلی (در صورتی که RLS در پروژه اجباری باشد)
+drop policy if exists "allow_anon_all_finance_app_state" on public.finance_app_state;
+create policy "allow_anon_all_finance_app_state" on public.finance_app_state for all using (true) with check (true);
+
+drop policy if exists "allow_anon_all_monthly_files" on public.monthly_files;
+create policy "allow_anon_all_monthly_files" on public.monthly_files for all using (true) with check (true);
 `;

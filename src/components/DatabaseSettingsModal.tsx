@@ -103,18 +103,20 @@ export const DatabaseSettingsModal: React.FC<DatabaseSettingsModalProps> = ({
     });
 
     // Push current data immediately to Supabase
-    const pushSuccess = await pushStateToSupabase(currentState);
+    const pushResult = await pushStateToSupabase(currentState);
     setIsSavingCloud(false);
 
-    if (pushSuccess) {
-      showToast('دیتابیس ابری با موفقیت متصل و همگام شد');
+    if (pushResult.success) {
+      showToast('دیتابیس ابری با موفقیت متصل و داده‌ها همگام شدند');
       onRefreshSync();
       onClose();
     } else {
-      showToast('تنظیمات ذخیره شد، اما جدول دیتابیس یافت نشد. دستور SQL زیر را در Supabase اجرا نمایید.');
+      showToast('تنظیمات ذخیره شد، اما در ذخیره اطلاعات خطایی رخ داد');
       setTestResult({
         success: false,
-        message: 'جدول finance_app_state ساخته نشده است. لطفاً اسکریپت SQL پایین را در بخش SQL Editor داشبورد Supabase اجرا فرمایید.',
+        message:
+          pushResult.error ||
+          'جدول finance_app_state ساخته نشده یا دسترسی RLS مسدود است. لطفاً اسکریپت SQL پایین را در بخش SQL Editor داشبورد Supabase اجرا فرمایید.',
       });
     }
   };
@@ -340,6 +342,28 @@ export const DatabaseSettingsModal: React.FC<DatabaseSettingsModalProps> = ({
               <pre className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[10px] text-slate-400 font-mono text-left dir-ltr overflow-x-auto max-h-24">
                 {SUPABASE_SETUP_SQL}
               </pre>
+            </div>
+
+            {/* Cloudflare Pages Guidance */}
+            <div className="p-3 rounded-xl bg-slate-950/90 border border-sky-800/40 text-[11px] space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-sky-400 text-xs">
+                <Cloud className="w-3.5 h-3.5" />
+                <span>راهنمای ویژه هاست کلادفلر (Cloudflare Pages):</span>
+              </div>
+              <p className="text-[10px] text-slate-300 leading-relaxed">
+                روی هاست‌های استاتیک نظیر Cloudflare Pages سرور بک‌اند نودجی‌اس وجود ندارد، اما اتصال به دیتابیس Supabase مستقیماً و با امنیت کامل از طریق مرورگر انجام می‌شود:
+              </p>
+              <div className="space-y-1 text-[10px] text-slate-400 pr-1">
+                <p>
+                  • <strong className="text-white">روش ۱ (آنی و بدون نیاز به بیلد مجدد):</strong> کافی است Project URL و Anon Key سوپابیس را در همین پنجره وارد کرده و دکمه «ذخیره و فعال‌سازی» را بزنید.
+                </p>
+                <p>
+                  • <strong className="text-white">روش ۲ (از طریق داشبورد کلادفلر):</strong> در منوی Cloudflare Pages &gt; Settings &gt; Environment variables متغیرهای <code className="text-teal-300 font-mono">VITE_SUPABASE_URL</code> و <code className="text-teal-300 font-mono">VITE_SUPABASE_ANON_KEY</code> را وارد نمایید.
+                </p>
+                <p>
+                  • <strong className="text-amber-300">مرحله حیاتی:</strong> حتماً کد SQL بالا را در SQL Editor داشبورد Supabase اجرا کنید تا جدول‌ها و دسترسی‌های RLS آماده شوند.
+                </p>
+              </div>
             </div>
           </div>
 

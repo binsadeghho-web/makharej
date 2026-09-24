@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Budget, Expense } from '../types/finance';
-import { getCurrentShamsiDate, formatMoney, toPersianDigits, toEnglishDigits } from '../utils/shamsi';
+import { getCurrentShamsiDate, formatMoney, toPersianDigits, toEnglishDigits, formatNumberWithCommas, numberToPersianWords } from '../utils/shamsi';
 import { X, Calendar, Clock, Check, AlertCircle, Plus, Edit3 } from 'lucide-react';
 
 interface AddExpenseModalProps {
@@ -201,16 +201,31 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
               <input
                 type="text"
                 inputMode="numeric"
-                value={amountStr ? toPersianDigits(Number(amountStr).toLocaleString('en-US')) : ''}
+                value={formatNumberWithCommas(amountStr)}
                 onChange={handleAmountChange}
-                placeholder="مثال: ۲۵۰,۰۰۰"
-                className="w-full text-2xl font-bold bg-slate-950 border border-slate-700/80 rounded-2xl px-4 py-3.5 text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 transition text-left dir-ltr"
+                placeholder="مثال: 250,000"
+                className="w-full text-2xl font-bold font-mono bg-slate-950 border border-slate-700/80 rounded-2xl px-4 py-3.5 text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 transition text-left dir-ltr"
                 autoFocus={!isEditing}
               />
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500">
                 {currencyUnit}
               </span>
             </div>
+
+            {/* Live Persian preview */}
+            {amountStr && (
+              <div className="mt-1.5 p-2 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] space-y-0.5">
+                <div className="flex items-center justify-between text-emerald-300 font-bold">
+                  <span>مبلغ به عدد:</span>
+                  <span>{formatMoney(amountStr, currencyUnit)}</span>
+                </div>
+                {numberToPersianWords(amountStr) && (
+                  <div className="text-[10px] text-emerald-400/90 text-right">
+                    به حروف: {numberToPersianWords(amountStr)} {currencyUnit}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Fast Quick-Add Amount Buttons */}
             <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1">
@@ -219,7 +234,7 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                   key={quick}
                   type="button"
                   onClick={() => addQuickAmount(quick)}
-                  className="shrink-0 px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition active:scale-95"
+                  className="shrink-0 px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition active:scale-95 cursor-pointer"
                 >
                   +{formatMoney(quick, '')}
                 </button>

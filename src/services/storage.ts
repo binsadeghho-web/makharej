@@ -325,10 +325,22 @@ export async function saveStateToDatabase(state: AppState): Promise<DatabaseSave
   // Case B: Supabase Cloud Database is configured
   if (isSupabase) {
     try {
-      const timeoutPromise = new Promise<{ success: boolean; isTimeout: boolean }>((resolve) =>
-        setTimeout(() => resolve({ success: false, isTimeout: true }), DATABASE_TIMEOUT_MS)
+      const timeoutPromise = new Promise<{ success: boolean; isTimeout: boolean; error?: string }>((resolve) =>
+        setTimeout(
+          () =>
+            resolve({
+              success: false,
+              isTimeout: true,
+              error: 'ثبت نشد: ذخیره در دیتابیس بیش از ۸ ثانیه طول کشید',
+            }),
+          8000
+        )
       );
-      const pushPromise = pushStateToSupabase(state).then((ok) => ({ success: ok, isTimeout: false }));
+      const pushPromise = pushStateToSupabase(state).then((res) => ({
+        success: res.success,
+        isTimeout: false,
+        error: res.error,
+      }));
 
       const res = await Promise.race([pushPromise, timeoutPromise]);
       const durationMs = Date.now() - start;
@@ -339,7 +351,7 @@ export async function saveStateToDatabase(state: AppState): Promise<DatabaseSave
           provider: 'supabase',
           durationMs,
           isTimeout: true,
-          error: 'ثبت نشد: ذخیره در دیتابیس ابری بیش از ۳ ثانیه طول کشید',
+          error: 'ثبت نشد: پاسخ‌گویی دیتابیس ابری بیش از ۸ ثانیه طول کشید. وضعیت اینترنت یا فیلترشکن را بررسی کنید.',
         };
       }
 
@@ -350,7 +362,7 @@ export async function saveStateToDatabase(state: AppState): Promise<DatabaseSave
           success: false,
           provider: 'supabase',
           durationMs,
-          error: 'خطا در ثبت اطلاعات در دیتابیس ابری Supabase',
+          error: res.error || 'خطا در ثبت اطلاعات در دیتابیس ابری Supabase',
         };
       }
     } catch (err: any) {

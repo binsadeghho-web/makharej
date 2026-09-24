@@ -1,6 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { MonthlyFile, MonthSummary, Deposit } from '../types/finance';
-import { formatMoney, toPersianDigits, toEnglishDigits, getCurrentShamsiDate } from '../utils/shamsi';
+import {
+  formatMoney,
+  toPersianDigits,
+  toEnglishDigits,
+  getCurrentShamsiDate,
+  formatNumberWithCommas,
+  numberToPersianWords,
+} from '../utils/shamsi';
 import {
   CheckCircle2,
   Circle,
@@ -606,14 +613,29 @@ export const DepositsSection: React.FC<DepositsSectionProps> = ({
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={formAmountStr ? toPersianDigits(Number(formAmountStr).toLocaleString('en-US')) : ''}
+                  value={formatNumberWithCommas(formAmountStr)}
                   onChange={(e) => {
                     const clean = toEnglishDigits(e.target.value).replace(/[^0-9]/g, '');
                     setFormAmountStr(clean);
                   }}
-                  placeholder="مثال: ۲۵,۰۰۰,۰۰۰"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm font-bold text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
+                  placeholder="مثال: 25,000,000"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm font-bold font-mono text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
                 />
+
+                {/* Live Persian formatting and verbal words preview */}
+                {formAmountStr && (
+                  <div className="mt-1.5 p-2 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] space-y-0.5">
+                    <div className="flex items-center justify-between text-emerald-300 font-bold">
+                      <span>مبلغ به عدد:</span>
+                      <span>{formatMoney(formAmountStr, currencyUnit)}</span>
+                    </div>
+                    {numberToPersianWords(formAmountStr) && (
+                      <div className="text-[10px] text-emerald-400/90 text-right">
+                        به حروف: {numberToPersianWords(formAmountStr)} {currencyUnit}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Quick Add Preset Buttons */}
                 <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1">
