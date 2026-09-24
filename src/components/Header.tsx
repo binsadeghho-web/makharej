@@ -1,18 +1,25 @@
 import React from 'react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { getCurrentShamsiDate } from '../utils/shamsi';
-import { Wallet, RefreshCw, Database, AlertCircle } from 'lucide-react';
+import { Wallet, RefreshCw, Database, AlertCircle, Cloud, HardDrive } from 'lucide-react';
+import { DatabaseProvider } from '../services/storage';
 
 interface HeaderProps {
   currentMonthName: string;
-  syncStatus?: 'synced' | 'syncing' | 'error' | 'not_configured';
+  syncStatus?: 'synced' | 'syncing' | 'error' | 'not_configured' | 'local_storage';
+  activeProvider?: DatabaseProvider;
+  isStaticHost?: boolean;
   onRetrySync?: () => void;
+  onOpenDatabaseModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentMonthName,
   syncStatus = 'synced',
+  activeProvider = 'local',
+  isStaticHost = false,
   onRetrySync,
+  onOpenDatabaseModal,
 }) => {
   const today = getCurrentShamsiDate();
 
@@ -22,13 +29,35 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Left: Background Database Status Indicator & PWA Install */}
         <div className="flex items-center gap-1.5">
           {syncStatus === 'synced' && (
-            <div
-              title="داده‌ها در دیتابیس پایدار سرور ذخیره هستند (با پاک کردن هیستوری مرورگر پاک نمی‌شود)"
-              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
+            <button
+              onClick={onOpenDatabaseModal}
+              title={
+                activeProvider === 'supabase'
+                  ? 'دیتابیس ابری Supabase متصل است (برای تنظیمات کلیک کنید)'
+                  : activeProvider === 'server'
+                  ? 'دیتابیس سرور متصل است (برای تنظیمات کلیک کنید)'
+                  : 'دیتابیس متصل است'
+              }
+              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition cursor-pointer"
             >
-              <Database className="w-3 h-3 text-emerald-400" />
-              <span>دیتابیس متصل</span>
-            </div>
+              {activeProvider === 'supabase' ? (
+                <Cloud className="w-3 h-3 text-emerald-400" />
+              ) : (
+                <Database className="w-3 h-3 text-emerald-400" />
+              )}
+              <span>{activeProvider === 'supabase' ? 'دیتابیس ابری' : 'دیتابیس متصل'}</span>
+            </button>
+          )}
+
+          {syncStatus === 'local_storage' && (
+            <button
+              onClick={onOpenDatabaseModal}
+              title="داده‌ها در حافظه مرورگر ذخیره هستند. برای اتصال دیتابیس ابری کلیک کنید"
+              className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 transition cursor-pointer"
+            >
+              <HardDrive className="w-3 h-3 text-amber-400" />
+              <span>دیتابیس محلی</span>
+            </button>
           )}
 
           {syncStatus === 'syncing' && (
@@ -44,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
           {syncStatus === 'error' && (
             <button
               onClick={onRetrySync}
-              title="ثبت نشد! برای تلاش مجدد کلیک کنید"
+              title="ثبت نشد! برای تلاش مجدد یا تغییر تنظیمات دیتابیس کلیک کنید"
               className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 border border-rose-500/40 text-rose-300 animate-pulse cursor-pointer hover:bg-rose-500/30 transition"
             >
               <AlertCircle className="w-3 h-3 text-rose-400" />
@@ -72,11 +101,16 @@ export const Header: React.FC<HeaderProps> = ({
             <h1 className="text-xs font-extrabold text-white tracking-tight">مدیریت مخارج</h1>
             <span className="text-[9px] text-slate-400 block -mt-0.5 font-medium">بودجه‌بندی هوشمند</span>
           </div>
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-slate-950 shadow-md shadow-emerald-500/20">
+          <button
+            onClick={onOpenDatabaseModal}
+            title="تنظیمات دیتابیس و پشتیبان‌گیری"
+            className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-slate-950 shadow-md shadow-emerald-500/20 hover:scale-105 transition cursor-pointer"
+          >
             <Wallet className="w-4 h-4" />
-          </div>
+          </button>
         </div>
       </div>
     </header>
   );
 };
+

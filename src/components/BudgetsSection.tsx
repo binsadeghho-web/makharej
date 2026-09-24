@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Budget, Expense, MonthSummary } from '../types/finance';
 import { getBudgetCalculations } from '../services/storage';
-import { formatMoney, toPersianDigits } from '../utils/shamsi';
+import { formatMoney, toPersianDigits, toEnglishDigits } from '../utils/shamsi';
 import { BudgetDonutChart } from './BudgetDonutChart';
 import { BudgetSummaryChart } from './BudgetSummaryChart';
 import {
@@ -90,7 +90,8 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
 
   const handleSaveBudget = (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = parseFloat(formAmountStr.replace(/,/g, '')) || 0;
+    const cleanNumStr = toEnglishDigits(formAmountStr).replace(/,/g, '');
+    const amount = parseFloat(cleanNumStr) || 0;
     if (!formTitle.trim() || amount <= 0) return;
 
     if (editingBudget) {
@@ -534,11 +535,31 @@ export const BudgetsSection: React.FC<BudgetsSectionProps> = ({
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={formAmountStr}
-                  onChange={(e) => setFormAmountStr(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="مثال: ۸۰۰۰۰۰۰"
+                  value={formAmountStr ? toPersianDigits(Number(formAmountStr).toLocaleString('en-US')) : ''}
+                  onChange={(e) => {
+                    const clean = toEnglishDigits(e.target.value).replace(/[^0-9]/g, '');
+                    setFormAmountStr(clean);
+                  }}
+                  placeholder="مثال: ۸,۰۰۰,۰۰۰"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm font-bold text-teal-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
                 />
+
+                {/* Quick Add Preset Buttons */}
+                <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1">
+                  {[1000000, 2000000, 5000000, 10000000].map((quick) => (
+                    <button
+                      key={quick}
+                      type="button"
+                      onClick={() => {
+                        const cur = parseFloat(toEnglishDigits(formAmountStr).replace(/,/g, '')) || 0;
+                        setFormAmountStr(String(cur + quick));
+                      }}
+                      className="shrink-0 px-2 py-1 text-[11px] font-semibold rounded-lg bg-slate-800/80 text-teal-400 border border-slate-700/60 hover:bg-slate-700 transition active:scale-95 cursor-pointer"
+                    >
+                      +{formatMoney(quick, '')}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Color picker */}

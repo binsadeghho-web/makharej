@@ -12,6 +12,7 @@ import {
   loadStateFromDatabase,
   calculateMonthSummary,
   closeAndArchiveCurrentMonth,
+  DatabaseProvider,
 } from './services/storage';
 import {
   getStoredSupabaseConfig,
@@ -26,6 +27,7 @@ import { ExpensesSection } from './components/ExpensesSection';
 import { ArchiveSection } from './components/ArchiveSection';
 import { AddExpenseModal } from './components/AddExpenseModal';
 import { CloseMonthModal } from './components/CloseMonthModal';
+import { DatabaseSettingsModal } from './components/DatabaseSettingsModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { getCurrentShamsiDate } from './utils/shamsi';
 import { Check, CheckCircle, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
@@ -41,7 +43,10 @@ export default function App() {
     undefined
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'local_storage'>('synced');
+  const [activeProvider, setActiveProvider] = useState<DatabaseProvider>('local');
+  const [isStaticHost, setIsStaticHost] = useState(false);
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -51,7 +56,7 @@ export default function App() {
     }, 4000);
   }, []);
 
-  // 1. Initial Load from Persistent Server Database
+  // 1. Initial Load from Multi-Source Database (Server -> Supabase -> IndexedDB -> LocalStorage)
   // Survives browser history / cache / localStorage clear!
   useEffect(() => {
     let isMounted = true;
@@ -60,11 +65,16 @@ export default function App() {
         if (!isMounted) return;
         if (res.state && res.state.currentFile) {
           setState(res.state);
-          if (res.fromServer) {
-            setSyncStatus('synced');
-            setDbError(null);
-          }
         }
+        setActiveProvider(res.provider);
+        setIsStaticHost(res.isStaticHost);
+
+        if (res.provider === 'local') {
+          setSyncStatus('local_storage');
+        } else {
+          setSyncStatus('synced');
+        }
+        setDbError(null);
         setIsInitialLoadDone(true);
       })
       .catch((err) => {
@@ -78,7 +88,7 @@ export default function App() {
     };
   }, []);
 
-  // 2. Strict 3-Second Save to Persistent Database on State Changes
+  // 2. Strict 3-Second Save to Database on State Changes
   useEffect(() => {
     if (!isInitialLoadDone) return;
 
@@ -88,18 +98,18 @@ export default function App() {
     saveStateToDatabase(state).then((res) => {
       if (isCancelled) return;
 
-      if (res.success) {
-        setSyncStatus('synced');
-        setDbError(null);
+      setActiveProvider(res.provider);
 
-        // Optional cloud backup to Supabase if configured
-        const config = getStoredSupabaseConfig();
-        if (config.isConfigured) {
-          pushStateToSupabase(state).catch((e) => {
-            console.warn('Supabase secondary sync failed:', e);
-          });
+      if (res.success) {
+        if (res.isStaticHostWithoutCloud) {
+          setSyncStatus('local_storage');
+          setIsStaticHost(true);
+        } else {
+          setSyncStatus('synced');
         }
+        setDbError(null);
       } else {
+        // Real database save failure or timeout > 3 seconds
         setSyncStatus('error');
         const errorMsg =
           res.error || 'ثبت نشد: اطلاعات تا ۳ ثانیه در دیتابیس ثبت نشد';
@@ -120,8 +130,14 @@ export default function App() {
     showToast('در حال تلاش مجدد برای ثبت در دیتابیس...');
 
     saveStateToDatabase(state).then((res) => {
+      setActiveProvider(res.provider);
       if (res.success) {
-        setSyncStatus('synced');
+        if (res.isStaticHostWithoutCloud) {
+          setSyncStatus('local_storage');
+          setIsStaticHost(true);
+        } else {
+          setSyncStatus('synced');
+        }
         setDbError(null);
         showToast('اطلاعات با موفقیت در دیتابیس ثبت شد');
       } else {
@@ -344,7 +360,10 @@ export default function App() {
         <Header
           currentMonthName={currentFile.monthName}
           syncStatus={syncStatus}
+          activeProvider={activeProvider}
+          isStaticHost={isStaticHost}
           onRetrySync={handleRetrySave}
+          onOpenDatabaseModal={() => setIsDbModalOpen(true)}
         />
 
         {/* Prominent Database Save Error Banner (Explicit User Requirement) */}
@@ -367,8 +386,14 @@ export default function App() {
                   <span>تلاش مجدد برای ثبت</span>
                 </button>
                 <button
+                  onClick={() => setIsDbModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 font-medium text-[11px] border border-slate-700 cursor-pointer"
+                >
+                  تنظیمات دیتابیس
+                </button>
+                <button
                   onClick={() => setDbError(null)}
-                  className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 font-medium text-[11px] cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white font-medium text-[11px] cursor-pointer"
                 >
                   بستن پیام
                 </button>
@@ -479,6 +504,16 @@ export default function App() {
           summary={summary}
           onConfirmClose={handleConfirmCloseMonth}
           currencyUnit={state.currencyUnit}
+        />
+
+        {/* Database Settings Modal */}
+        <DatabaseSettingsModal
+          isOpen={isDbModalOpen}
+          onClose={() => setIsDbModalOpen(false)}
+          currentState={state}
+          onRestoreState={(restored) => setState(restored)}
+          onRefreshSync={handleRetrySave}
+          showToast={showToast}
         />
 
         {/* Floating Toast Notification */}

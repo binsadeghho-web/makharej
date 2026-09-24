@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { MonthlyFile, MonthSummary, Deposit } from '../types/finance';
-import { formatMoney, toPersianDigits, getCurrentShamsiDate } from '../utils/shamsi';
+import { formatMoney, toPersianDigits, toEnglishDigits, getCurrentShamsiDate } from '../utils/shamsi';
 import {
   CheckCircle2,
   Circle,
@@ -130,7 +130,8 @@ export const DepositsSection: React.FC<DepositsSectionProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = parseFloat(formAmountStr.replace(/,/g, '')) || 0;
+    const cleanNumStr = toEnglishDigits(formAmountStr).replace(/,/g, '');
+    const amount = parseFloat(cleanNumStr) || 0;
     if (!formTitle.trim() || amount <= 0) return;
 
     const now = getCurrentShamsiDate();
@@ -607,12 +608,29 @@ export const DepositsSection: React.FC<DepositsSectionProps> = ({
                   inputMode="numeric"
                   value={formAmountStr ? toPersianDigits(Number(formAmountStr).toLocaleString('en-US')) : ''}
                   onChange={(e) => {
-                    const raw = e.target.value.replace(/[^0-9]/g, '');
-                    setFormAmountStr(raw);
+                    const clean = toEnglishDigits(e.target.value).replace(/[^0-9]/g, '');
+                    setFormAmountStr(clean);
                   }}
                   placeholder="مثال: ۲۵,۰۰۰,۰۰۰"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm font-bold text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-left dir-ltr"
                 />
+
+                {/* Quick Add Preset Buttons */}
+                <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1">
+                  {[1000000, 5000000, 10000000, 25000000, 50000000].map((quick) => (
+                    <button
+                      key={quick}
+                      type="button"
+                      onClick={() => {
+                        const cur = parseFloat(toEnglishDigits(formAmountStr).replace(/,/g, '')) || 0;
+                        setFormAmountStr(String(cur + quick));
+                      }}
+                      className="shrink-0 px-2 py-1 text-[11px] font-semibold rounded-lg bg-slate-800/80 text-emerald-400 border border-slate-700/60 hover:bg-slate-700 transition active:scale-95 cursor-pointer"
+                    >
+                      +{formatMoney(quick, '')}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* زمان واریزی (Expected Deposit Time) */}
@@ -667,7 +685,7 @@ export const DepositsSection: React.FC<DepositsSectionProps> = ({
                       max={31}
                       value={formExpectedDay || ''}
                       onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
+                        const val = parseInt(toEnglishDigits(e.target.value), 10);
                         if (!isNaN(val) && val >= 1 && val <= 31) {
                           setFormExpectedDay(val);
                         } else if (!e.target.value) {

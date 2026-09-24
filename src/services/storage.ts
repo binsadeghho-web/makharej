@@ -1,5 +1,6 @@
 import { AppState, MonthlyFile, MonthSummary, Budget, Deposit, Expense } from '../types/finance';
 import { getCurrentShamsiDate, getShamsiMonthTitle, getNextShamsiMonth } from '../utils/shamsi';
+import { getStoredSupabaseConfig, pushStateToSupabase, fetchStateFromSupabase } from './supabase';
 
 const STORAGE_KEY = 'shamsi_finance_pwa_state_v1';
 
@@ -128,106 +129,315 @@ export function saveAppState(state: AppState): void {
   }
 }
 
+// --- IndexedDB Deep Local Storage Layer ---
+const IDB_NAME = 'shamsi_finance_db_v1';
+const IDB_STORE = 'app_state_store';
+const IDB_KEY = 'latest_state';
+
+function openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      return reject(new Error('IndexedDB is not supported'));
+    }
+    const request = indexedDB.open(IDB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveToIndexedDB(state: AppState): Promise<void> {
+  try {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.put(state, IDB_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    // Non-fatal, just a warning
+    console.warn('Could not save to IndexedDB:', err);
+  }
+}
+
+export async function loadFromIndexedDB(): Promise<AppState | null> {
+  try {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get(IDB_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('Could not load from IndexedDB:', err);
+    return null;
+  }
+}
+
 export const DATABASE_TIMEOUT_MS = 3000;
+
+export type DatabaseProvider = 'server' | 'supabase' | 'local';
 
 export interface DatabaseSaveResult {
   success: boolean;
   durationMs: number;
+  provider: DatabaseProvider;
   error?: string;
   isTimeout?: boolean;
+  isStaticHostWithoutCloud?: boolean;
+}
+
+// Cached server probe result to avoid repeated network probes
+let serverProbeResult: boolean | null = null;
+let lastProbeTime = 0;
+
+/**
+ * Checks what database backend is active:
+ * 1. Node.js backend (/api/state) if running on Node / dev preview
+ * 2. Supabase Cloud Database if configured (ideal for static hosts like Cloudflare Pages)
+ * 3. Local IndexedDB + LocalStorage (when on static host without Supabase)
+ */
+export async function probeDatabaseBackend(forceRefresh = false): Promise<{
+  isServer: boolean;
+  isSupabase: boolean;
+  activeProvider: DatabaseProvider;
+  isStaticHost: boolean;
+}> {
+  const now = Date.now();
+  const supabaseConfig = getStoredSupabaseConfig();
+  const isSupabase = supabaseConfig.isConfigured;
+
+  // Probe server if not probed recently (cache for 15 seconds unless forced)
+  if (forceRefresh || serverProbeResult === null || now - lastProbeTime > 15000) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch('/api/ping', { signal: controller.signal });
+      clearTimeout(timer);
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json();
+        serverProbeResult = Boolean(data && data.ok);
+      } else {
+        // If content-type is text/html or 404, it's a static host!
+        serverProbeResult = false;
+      }
+    } catch {
+      serverProbeResult = false;
+    }
+    lastProbeTime = now;
+  }
+
+  const isServer = Boolean(serverProbeResult);
+  const isStaticHost = !isServer;
+
+  let activeProvider: DatabaseProvider = 'local';
+  if (isServer) {
+    activeProvider = 'server';
+  } else if (isSupabase) {
+    activeProvider = 'supabase';
+  }
+
+  return { isServer, isSupabase, activeProvider, isStaticHost };
 }
 
 /**
- * Saves app state to the persistent server database with strict 3-second timeout.
- * If saving takes longer than 3 seconds or fails, it reports failure immediately.
+ * Saves app state to the database with strict 3-second timeout constraint:
+ * - If server is active (Node.js server), saves to server with 3s timeout.
+ * - If Supabase is configured (Static host or Cloud), saves to Supabase with 3s timeout.
+ * - If on static host without cloud database, saves safely to LocalStorage + IndexedDB
+ *   and reports provider: 'local', WITHOUT spamming false "database failure" alarms.
  */
 export async function saveStateToDatabase(state: AppState): Promise<DatabaseSaveResult> {
   const start = Date.now();
 
-  // Always update local cache immediately
+  // 1. Always update local stores immediately (LocalStorage + IndexedDB)
   saveAppState(state);
+  saveToIndexedDB(state).catch(() => {});
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, DATABASE_TIMEOUT_MS);
+  const { isServer, isSupabase } = await probeDatabaseBackend();
 
-  try {
-    const response = await fetch('/api/state', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state),
-      signal: controller.signal,
-    });
+  // Case A: Server backend (Node.js Express / server.ts)
+  if (isServer) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DATABASE_TIMEOUT_MS);
 
-    clearTimeout(timer);
-    const durationMs = Date.now() - start;
+    try {
+      const response = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const durationMs = Date.now() - start;
 
-    if (!response.ok) {
+      const ct = response.headers.get('content-type') || '';
+      if (!response.ok || !ct.includes('application/json')) {
+        serverProbeResult = false; // invalidate probe
+        return {
+          success: false,
+          provider: 'server',
+          durationMs,
+          error: `پاسخ ناموفق از سرور دیتابیس (کد ${response.status})`,
+        };
+      }
+
+      const data = await response.json();
+      if (data && data.success) {
+        if (isSupabase) {
+          pushStateToSupabase(state).catch(() => {});
+        }
+        return { success: true, provider: 'server', durationMs };
+      } else {
+        return {
+          success: false,
+          provider: 'server',
+          durationMs,
+          error: data?.error || 'خطا در ثبت دیتابیس سرور',
+        };
+      }
+    } catch (err: any) {
+      clearTimeout(timer);
+      const durationMs = Date.now() - start;
+      const isTimeout = err?.name === 'AbortError' || durationMs >= DATABASE_TIMEOUT_MS;
       return {
         success: false,
+        provider: 'server',
         durationMs,
-        error: `پاسخ ناموفق از سرور (کد ${response.status})`,
+        isTimeout,
+        error: isTimeout
+          ? 'ثبت نشد: عملیات ذخیره در دیتابیس بیش از ۳ ثانیه طول کشید'
+          : (err?.message || 'خطا در اتصال به سرور دیتابیس'),
       };
     }
-
-    const data = await response.json();
-    if (data && data.success) {
-      return {
-        success: true,
-        durationMs,
-      };
-    } else {
-      return {
-        success: false,
-        durationMs,
-        error: data?.error || 'خطا در ثبت دیتابیس',
-      };
-    }
-  } catch (err: any) {
-    clearTimeout(timer);
-    const durationMs = Date.now() - start;
-    const isTimeout = err?.name === 'AbortError' || durationMs >= DATABASE_TIMEOUT_MS;
-
-    return {
-      success: false,
-      durationMs,
-      isTimeout,
-      error: isTimeout
-        ? 'ثبت نشد: عملیات ذخیره در دیتابیس بیش از ۳ ثانیه طول کشید'
-        : (err?.message || 'خطا در اتصال به دیتابیس'),
-    };
   }
+
+  // Case B: Supabase Cloud Database is configured
+  if (isSupabase) {
+    try {
+      const timeoutPromise = new Promise<{ success: boolean; isTimeout: boolean }>((resolve) =>
+        setTimeout(() => resolve({ success: false, isTimeout: true }), DATABASE_TIMEOUT_MS)
+      );
+      const pushPromise = pushStateToSupabase(state).then((ok) => ({ success: ok, isTimeout: false }));
+
+      const res = await Promise.race([pushPromise, timeoutPromise]);
+      const durationMs = Date.now() - start;
+
+      if (res.isTimeout) {
+        return {
+          success: false,
+          provider: 'supabase',
+          durationMs,
+          isTimeout: true,
+          error: 'ثبت نشد: ذخیره در دیتابیس ابری بیش از ۳ ثانیه طول کشید',
+        };
+      }
+
+      if (res.success) {
+        return { success: true, provider: 'supabase', durationMs };
+      } else {
+        return {
+          success: false,
+          provider: 'supabase',
+          durationMs,
+          error: 'خطا در ثبت اطلاعات در دیتابیس ابری Supabase',
+        };
+      }
+    } catch (err: any) {
+      const durationMs = Date.now() - start;
+      return {
+        success: false,
+        provider: 'supabase',
+        durationMs,
+        error: err?.message || 'خطا در برقراری ارتباط با دیتابیس ابری',
+      };
+    }
+  }
+
+  // Case C: Static Host without Supabase Cloud Database
+  // Data is safely stored in LocalStorage + IndexedDB.
+  // We report success with isStaticHostWithoutCloud=true so the UI shows that it's stored locally
+  // and invites user to connect Supabase if they want cross-device / history-clear-proof persistence.
+  const durationMs = Date.now() - start;
+  return {
+    success: true,
+    provider: 'local',
+    durationMs,
+    isStaticHostWithoutCloud: true,
+  };
 }
 
 /**
- * Loads app state from server database with 3-second timeout,
- * falling back to localStorage if offline.
+ * Loads app state from database with multi-source fallback:
+ * Server Database -> Supabase Cloud -> IndexedDB -> LocalStorage.
  */
-export async function loadStateFromDatabase(): Promise<{ state: AppState; fromServer: boolean; error?: string }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, DATABASE_TIMEOUT_MS);
+export async function loadStateFromDatabase(): Promise<{
+  state: AppState;
+  source: 'server' | 'supabase' | 'indexeddb' | 'localstorage';
+  provider: DatabaseProvider;
+  isStaticHost: boolean;
+}> {
+  const { isServer, isSupabase, isStaticHost, activeProvider } = await probeDatabaseBackend();
 
-  try {
-    const response = await fetch('/api/state', { signal: controller.signal });
-    clearTimeout(timer);
-
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success && result.data && result.data.currentFile) {
-        saveAppState(result.data);
-        return { state: result.data, fromServer: true };
+  // 1. Try server if available
+  if (isServer) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), DATABASE_TIMEOUT_MS);
+      const res = await fetch('/api/state', { signal: controller.signal });
+      clearTimeout(timer);
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const json = await res.json();
+        if (json.success && json.data && json.data.currentFile) {
+          saveAppState(json.data);
+          saveToIndexedDB(json.data).catch(() => {});
+          return { state: json.data, source: 'server', provider: 'server', isStaticHost: false };
+        }
       }
+    } catch (err) {
+      console.warn('Server load failed, falling back to other sources:', err);
     }
-  } catch (err: any) {
-    clearTimeout(timer);
-    console.warn('Could not load from server database within 3s, falling back to local cache:', err);
   }
 
-  const localState = loadAppState();
-  return { state: localState, fromServer: false };
+  // 2. Try Supabase if configured
+  if (isSupabase) {
+    try {
+      const cloud = await fetchStateFromSupabase();
+      if (cloud && cloud.currentFile) {
+        saveAppState(cloud);
+        saveToIndexedDB(cloud).catch(() => {});
+        return { state: cloud, source: 'supabase', provider: 'supabase', isStaticHost };
+      }
+    } catch (err) {
+      console.warn('Supabase cloud load failed, falling back to local:', err);
+    }
+  }
+
+  // 3. Try IndexedDB (survives when user clears standard browsing history in many browsers)
+  try {
+    const idb = await loadFromIndexedDB();
+    if (idb && idb.currentFile) {
+      saveAppState(idb);
+      return { state: idb, source: 'indexeddb', provider: activeProvider, isStaticHost };
+    }
+  } catch (err) {
+    console.warn('IndexedDB load failed:', err);
+  }
+
+  // 4. Try LocalStorage
+  const local = loadAppState();
+  return { state: local, source: 'localstorage', provider: activeProvider, isStaticHost };
 }
 
 /**
